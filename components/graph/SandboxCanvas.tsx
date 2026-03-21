@@ -1,6 +1,6 @@
 "use client"
 
-import { useRef, useEffect, useState } from "react"
+import { useRef, useEffect, useState, useMemo } from "react"
 import CytoscapeComponent from "react-cytoscapejs"
 import type { Core, ElementDefinition, Stylesheet } from "cytoscape"
 import type { GraphEdge } from "@/lib/supabase/types"
@@ -20,73 +20,9 @@ interface Props {
   onNodeClick: (ticker: string | null) => void
   onDrop: (ticker: string, modelPosition: { x: number; y: number }) => void
   impacts?: Record<string, number>  // ticker → decimal impact (e.g. -0.05 = -5%)
+  showWeights?: boolean
 }
 
-const STYLESHEET: Stylesheet[] = [
-  {
-    selector: "node",
-    style: {
-      width: 52,
-      height: 52,
-      label: "data(label)",
-      "font-size": 10,
-      "font-family": "var(--font-geist-mono), monospace",
-      "font-weight": "bold",
-      "text-valign": "center",
-      "text-halign": "center",
-      color: "#f0f0f5",
-      "text-outline-width": 2,
-      "text-outline-color": "#0a0a0f",
-      "text-outline-opacity": 0.8,
-      "background-color": (ele: any) => ele.data("impactColor") ?? DEFAULT_SECTOR_COLOR,
-      "background-opacity": 0.85,
-      "border-width": 1.5,
-      "border-color": "rgba(255, 255, 255, 0.12)",
-      "overlay-padding": 6,
-      "overlay-opacity": 0,
-      // Glow effect via shadow
-      "shadow-blur": 15,
-      "shadow-color": (ele: any) => ele.data("impactColor") ?? DEFAULT_SECTOR_COLOR,
-      "shadow-opacity": 0.4,
-      "shadow-offset-x": 0,
-      "shadow-offset-y": 0,
-    },
-  },
-  {
-    selector: "node:selected",
-    style: {
-      "border-width": 2,
-      "border-color": "#7b61ff",
-      "background-color": "#7b61ff",
-      "shadow-color": "#7b61ff",
-      "shadow-opacity": 0.6,
-      "shadow-blur": 25,
-      color: "#ffffff",
-    },
-  },
-  {
-    selector: "edge",
-    style: {
-      width: (ele: any) => Math.min(Math.max(ele.data("weight") * 5, 0.8), 4),
-      "line-color": "#2a2a3f",
-      "target-arrow-color": "#2a2a3f",
-      "target-arrow-shape": "triangle",
-      "arrow-scale": 0.8,
-      "curve-style": "bezier",
-      opacity: 0.5,
-      "line-style": "solid",
-    },
-  },
-  {
-    selector: "edge:selected",
-    style: {
-      "line-color": "#7b61ff",
-      "target-arrow-color": "#7b61ff",
-      opacity: 0.9,
-      width: (ele: any) => Math.min(Math.max(ele.data("weight") * 5, 1.5), 5),
-    },
-  },
-]
 
 function impactColor(impact: number, sectorColor: string): string {
   const magnitude = Math.min(Math.abs(impact) * 8, 1)
@@ -103,9 +39,83 @@ export default function SandboxCanvas({
   onNodeClick,
   onDrop,
   impacts = {},
+  showWeights = false,
 }: Props) {
   const cyRef = useRef<Core | null>(null)
   const [isDragOver, setIsDragOver] = useState(false)
+
+  const stylesheet = useMemo((): Stylesheet[] => [
+    {
+      selector: "node",
+      style: {
+        width: 52,
+        height: 52,
+        label: "data(label)",
+        "font-size": 10,
+        "font-family": "var(--font-geist-mono), monospace",
+        "font-weight": "bold",
+        "text-valign": "center",
+        "text-halign": "center",
+        color: "#f0f0f5",
+        "text-outline-width": 2,
+        "text-outline-color": "#0a0a0f",
+        "text-outline-opacity": 0.8,
+        "background-color": (ele: any) => ele.data("impactColor") ?? DEFAULT_SECTOR_COLOR,
+        "background-opacity": 0.85,
+        "border-width": 1.5,
+        "border-color": "rgba(255, 255, 255, 0.12)",
+        "overlay-padding": 6,
+        "overlay-opacity": 0,
+        "shadow-blur": 15,
+        "shadow-color": (ele: any) => ele.data("impactColor") ?? DEFAULT_SECTOR_COLOR,
+        "shadow-opacity": 0.4,
+        "shadow-offset-x": 0,
+        "shadow-offset-y": 0,
+      },
+    },
+    {
+      selector: "node:selected",
+      style: {
+        "border-width": 2,
+        "border-color": "#7b61ff",
+        "background-color": "#7b61ff",
+        "shadow-color": "#7b61ff",
+        "shadow-opacity": 0.6,
+        "shadow-blur": 25,
+        color: "#ffffff",
+      },
+    },
+    {
+      selector: "edge",
+      style: {
+        width: (ele: any) => Math.min(Math.max(ele.data("weight") * 5, 0.8), 4),
+        "line-color": "#2a2a3f",
+        "target-arrow-color": "#2a2a3f",
+        "target-arrow-shape": "triangle",
+        "arrow-scale": 0.8,
+        "curve-style": "bezier",
+        opacity: 0.5,
+        "line-style": "solid",
+        label: showWeights ? "data(weightLabel)" : "",
+        "font-size": 9,
+        "font-family": "var(--font-geist-mono), monospace",
+        color: "rgba(255,255,255,0.65)",
+        "text-background-color": "#0d0d18",
+        "text-background-opacity": showWeights ? 0.85 : 0,
+        "text-background-padding": "2px",
+        "text-background-shape": "roundrectangle",
+      },
+    },
+    {
+      selector: "edge:selected",
+      style: {
+        "line-color": "#7b61ff",
+        "target-arrow-color": "#7b61ff",
+        opacity: 0.9,
+        width: (ele: any) => Math.min(Math.max(ele.data("weight") * 5, 1.5), 5),
+      },
+    },
+  ], [showWeights])
 
   // Build elements from props — declarative, survives re-renders
   const elements: ElementDefinition[] = [
@@ -131,6 +141,7 @@ export default function SandboxCanvas({
           source: e.from_ticker,
           target: e.to_ticker,
           weight: e.total_weight,
+          weightLabel: e.total_weight.toFixed(3),
         },
       })),
   ]
@@ -219,7 +230,7 @@ export default function SandboxCanvas({
       <CytoscapeComponent
         elements={elements}
         style={{ width: "100%", height: "100%" }}
-        stylesheet={STYLESHEET}
+        stylesheet={stylesheet}
         layout={{ name: "preset" }}
         cy={(cy) => {
           cyRef.current = cy

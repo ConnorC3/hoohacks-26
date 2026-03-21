@@ -262,7 +262,7 @@ function InvestmentTab({
 
       <SurveyField
         question="When did you first purchase?"
-        hint="Optional \u2014 used for time-weighted return calculations."
+        hint="Optional — used for time-weighted return calculations."
       >
         <input
           type="date"
@@ -274,7 +274,7 @@ function InvestmentTab({
 
       <SurveyField
         question="Any notes on this position?"
-        hint="Optional \u2014 investment thesis, reminders, etc."
+        hint="Optional — investment thesis, reminders, etc."
       >
         <textarea
           rows={3}
@@ -445,7 +445,7 @@ function SimulateTab({
           <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>Shock applied</p>
           <p className="text-lg font-bold font-mono"
             style={{ color: shock < 0 ? 'var(--accent-red)' : 'var(--accent-green)' }}>
-            {shock > 0 ? "+" : ""}{shock}%
+            {shock > 0 ? "+" : ""}{parseFloat(shock.toPrecision(10))}%
           </p>
           <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
             Press Run Simulation above to propagate this shock.
@@ -460,15 +460,21 @@ function SimulateTab({
             border: '1px solid var(--glass-border)',
           }}>
           <p className="text-xs uppercase tracking-wider mb-1" style={{ color: 'var(--text-muted)' }}>Simulated Impact</p>
-          <SummaryRow
-            label="Price Change"
-            value={`${impactPct >= 0 ? "+" : ""}${impactPct.toFixed(2)}%`}
-            highlight={impactPct >= 0 ? "green" : "red"}
-          />
+          {latestPrice !== null && (
+            <SummaryRow label="Before" value={formatCurrency(latestPrice)} />
+          )}
           {impliedPrice !== null && (
             <SummaryRow
-              label="Implied Price"
+              label="After"
               value={formatCurrency(impliedPrice)}
+              highlight={impactPct >= 0 ? "green" : "red"}
+            />
+          )}
+          {latestPrice !== null && impliedPrice !== null && (
+            <SummaryRow
+              label="Difference"
+              value={`${impactPct! >= 0 ? "+" : ""}${formatCurrency(impliedPrice - latestPrice)} (${impactPct! >= 0 ? "+" : ""}${impactPct!.toFixed(2)}%)`}
+              highlight={impactPct! >= 0 ? "green" : "red"}
             />
           )}
         </div>

@@ -23,6 +23,7 @@ export default function StockGraph() {
   const [portfolio, setPortfolio] = useState<Record<string, PortfolioEntry>>({})
   const [error, setError] = useState<string | null>(null)
   const [showSimModal, setShowSimModal] = useState(false)
+  const [showWeights, setShowWeights] = useState(false)
 
   const companyMap = useRef<Map<string, Company>>(new Map())
   const addedTickers = new Set(canvasNodes.map((n) => n.ticker))
@@ -101,6 +102,8 @@ export default function StockGraph() {
           onRunToDateChange={sim.setRunToDate}
           impactedCount={Object.keys(sim.currentImpacts).filter((t) => Math.abs(sim.currentImpacts[t]) > 0.001).length}
           onViewResults={() => setShowSimModal(true)}
+          showWeights={showWeights}
+          onToggleWeights={() => setShowWeights((v) => !v)}
         />
 
         <div className="flex flex-1 overflow-hidden">
@@ -111,6 +114,7 @@ export default function StockGraph() {
             onNodeClick={setSelectedTicker}
             onDrop={handleDrop}
             impacts={simulationActive ? sim.currentImpacts : {}}
+            showWeights={showWeights}
           />
         </div>
       </div>

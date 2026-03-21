@@ -20,6 +20,9 @@ interface Props {
   // Simulation results summary
   impactedCount?: number
   onViewResults?: () => void
+  // Display toggles
+  showWeights?: boolean
+  onToggleWeights?: () => void
 }
 
 export default function SimulationControls({
@@ -38,6 +41,8 @@ export default function SimulationControls({
   onRunToDateChange,
   impactedCount,
   onViewResults,
+  showWeights,
+  onToggleWeights,
 }: Props) {
   const progress = maxHorizon > 0 ? (currentHorizon / (maxHorizon - 1)) * 100 : 0
   const today = new Date()
@@ -109,6 +114,21 @@ export default function SimulationControls({
             </button>
           ))}
         </div>
+
+        {/* Weight label toggle */}
+        {onToggleWeights && (
+          <button
+            onClick={onToggleWeights}
+            className="px-2 py-1 text-xs rounded-md transition-all duration-200"
+            style={{
+              background: showWeights ? 'var(--accent-purple)' : 'rgba(255,255,255,0.04)',
+              color: showWeights ? 'white' : 'var(--text-secondary)',
+              border: `1px solid ${showWeights ? 'var(--accent-purple)' : 'var(--glass-border)'}`,
+            }}
+          >
+            Weights
+          </button>
+        )}
 
         {/* Run-to date */}
         <div className="flex items-center gap-1.5">
