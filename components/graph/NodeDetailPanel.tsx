@@ -18,9 +18,14 @@ interface Props {
   portfolio: PortfolioEntry | null
   onPortfolioChange: (entry: PortfolioEntry) => void
   onRemove: () => void
+  // Simulation
+  shock: number | null          // current shock in % (e.g. -10)
+  onShockChange: (pct: number | null) => void
+  simulatedImpact: number | null // current impact at active horizon
+  simulationActive: boolean
 }
 
-type Tab = "overview" | "investment"
+type Tab = "overview" | "investment" | "simulate"
 
 function formatCurrency(value: number): string {
   return value.toLocaleString("en-US", { style: "currency", currency: "USD" })
@@ -41,6 +46,10 @@ export default function NodeDetailPanel({
   portfolio,
   onPortfolioChange,
   onRemove,
+  shock,
+  onShockChange,
+  simulatedImpact,
+  simulationActive,
 }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>("overview")
   const sectorColor = SECTOR_COLORS[company?.sector ?? ""] ?? DEFAULT_SECTOR_COLOR
@@ -72,7 +81,7 @@ export default function NodeDetailPanel({
 
       {/* Tabs */}
       <div className="flex border-b border-zinc-700">
-        {(["overview", "investment"] as Tab[]).map((tab) => (
+        {(["overview", "investment", "simulate"] as Tab[]).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -96,7 +105,7 @@ export default function NodeDetailPanel({
           </div>
         ) : activeTab === "overview" ? (
           <OverviewTab company={company} latestPrice={latestPrice} />
-        ) : (
+        ) : activeTab === "investment" ? (
           <InvestmentTab
             portfolio={portfolio ?? { shares: "", costBasis: "", purchaseDate: "", notes: "" }}
             onChange={onPortfolioChange}
@@ -105,6 +114,15 @@ export default function NodeDetailPanel({
             currentValue={currentValue}
             pnl={pnl}
             pnlPct={pnlPct}
+          />
+        ) : (
+          <SimulateTab
+            ticker={ticker}
+            shock={shock}
+            onShockChange={onShockChange}
+            simulatedImpact={simulatedImpact}
+            simulationActive={simulationActive}
+            latestPrice={latestPrice}
           />
         )}
       </div>
@@ -333,3 +351,84 @@ function SummaryRow({
 
 const inputClass =
   "w-full bg-zinc-800 text-white text-sm rounded-lg px-3 py-2.5 border border-zinc-700 focus:outline-none focus:border-indigo-500 placeholder-zinc-600 transition-colors"
+
+// ---------------------------------------------------------------------------
+// Simulate tab
+// ---------------------------------------------------------------------------
+
+function SimulateTab({
+  ticker,
+  shock,
+  onShockChange,
+  simulatedImpact,
+  simulationActive,
+  latestPrice,
+}: {
+  ticker: string
+  shock: number | null
+  onShockChange: (pct: number | null) => void
+  simulatedImpact: number | null
+  simulationActive: boolean
+  latestPrice: number | null
+}) {
+  const impactPct = simulatedImpact !== null ? simulatedImpact * 100 : null
+  const impliedPrice =
+    latestPrice !== null && simulatedImpact !== null
+      ? latestPrice * (1 + simulatedImpact)
+      : null
+
+  return (
+    <div className="flex flex-col gap-6 px-5 py-5">
+      <SurveyField
+        question={`Apply a price shock to ${ticker}`}
+        hint="Enter a positive or negative percentage. This shock will propagate to all other stocks on the canvas via their VAR influence relationships."
+      >
+        <div className="relative">
+          <input
+            type="number"
+            step="any"
+            placeholder="e.g. -10"
+            value={shock ?? ""}
+            onChange={(e) => {
+              const val = e.target.value === "" ? null : parseFloat(e.target.value)
+              onShockChange(isNaN(val as number) ? null : val)
+            }}
+            className={`${inputClass} pr-8`}
+          />
+          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 text-sm">%</span>
+        </div>
+      </SurveyField>
+
+      {shock !== null && shock !== 0 && (
+        <div className={`rounded-lg px-4 py-3 flex flex-col gap-1 ${
+          shock < 0 ? "bg-red-950/40 border border-red-800/40" : "bg-emerald-950/40 border border-emerald-800/40"
+        }`}>
+          <p className="text-zinc-400 text-xs">Shock applied</p>
+          <p className={`text-lg font-bold ${shock < 0 ? "text-red-400" : "text-emerald-400"}`}>
+            {shock > 0 ? "+" : ""}{shock}%
+          </p>
+          <p className="text-zinc-500 text-xs">
+            Press Run Simulation above to propagate this shock.
+          </p>
+        </div>
+      )}
+
+      {simulationActive && impactPct !== null && (
+        <div className="rounded-lg bg-zinc-800 px-4 py-4 flex flex-col gap-2.5">
+          <p className="text-zinc-400 text-xs uppercase tracking-wider mb-1">Simulated Impact</p>
+          <SummaryRow
+            label="Price Change"
+            value={`${impactPct >= 0 ? "+" : ""}${impactPct.toFixed(2)}%`}
+            highlight={impactPct >= 0 ? "green" : "red"}
+          />
+          {impliedPrice !== null && (
+            <SummaryRow
+              label="Implied Price"
+              value={formatCurrency(impliedPrice)}
+            />
+          )}
+        </div>
+      )}
+    </div>
+  )
+}

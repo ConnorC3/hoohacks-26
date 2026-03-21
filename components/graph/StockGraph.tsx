@@ -2,14 +2,14 @@
 
 import { useEffect, useRef, useState } from "react"
 import dynamic from "next/dynamic"
-
 import type { Company, GraphEdge } from "@/lib/supabase/types"
 import { getAllCompanies, getLatestPrices, getEdgesBetween } from "@/lib/supabase/queries"
 import CompanySidebar from "./CompanySidebar"
+import NodeDetailPanel from "./NodeDetailPanel"
+import SimulationControls from "@/components/simulation/SimulationControls"
+import { useSimulation } from "@/components/simulation/useSimulation"
 import type { PortfolioEntry } from "./NodeDetailPanel"
 import type { CanvasNode } from "./SandboxCanvas"
-
-import NodeDetailPanel from "./NodeDetailPanel"
 
 const SandboxCanvas = dynamic(() => import("./SandboxCanvas"), { ssr: false })
 
@@ -23,8 +23,9 @@ export default function StockGraph() {
   const [error, setError] = useState<string | null>(null)
 
   const companyMap = useRef<Map<string, Company>>(new Map())
-
   const addedTickers = new Set(canvasNodes.map((n) => n.ticker))
+
+  const sim = useSimulation(canvasNodes.map((n) => n.ticker))
 
   // Load all companies + latest prices on mount
   useEffect(() => {
@@ -58,10 +59,12 @@ export default function StockGraph() {
   function handleRemoveNode(ticker: string) {
     setCanvasNodes((prev) => prev.filter((n) => n.ticker !== ticker))
     setPortfolio((prev) => { const next = { ...prev }; delete next[ticker]; return next })
+    sim.setShock(ticker, null)
     if (selectedTicker === ticker) setSelectedTicker(null)
   }
 
   const selectedCompany = companies.find((c) => c.ticker === selectedTicker) ?? null
+  const simulationActive = sim.status !== "idle"
 
   if (error) {
     return (
@@ -75,14 +78,33 @@ export default function StockGraph() {
     <div className="flex h-full bg-zinc-950 overflow-hidden">
       <CompanySidebar companies={companies} addedTickers={addedTickers} />
 
-      <div className="flex-1 relative">
-        <SandboxCanvas
-          nodes={canvasNodes}
-          edges={edges}
-          selectedTicker={selectedTicker}
-          onNodeClick={setSelectedTicker}
-          onDrop={handleDrop}
+      <div className="flex flex-col flex-1 overflow-hidden">
+        <SimulationControls
+          status={sim.status}
+          currentHorizon={sim.currentHorizon}
+          maxHorizon={sim.maxHorizon}
+          speed={sim.speed}
+          runToDate={sim.runToDate}
+          loading={sim.loading}
+          error={sim.error}
+          onPlay={sim.play}
+          onPause={sim.pause}
+          onResume={sim.resume}
+          onReset={sim.reset}
+          onSpeedChange={sim.setSpeed}
+          onRunToDateChange={sim.setRunToDate}
         />
+
+        <div className="flex flex-1 overflow-hidden">
+          <SandboxCanvas
+            nodes={canvasNodes}
+            edges={edges}
+            selectedTicker={selectedTicker}
+            onNodeClick={setSelectedTicker}
+            onDrop={handleDrop}
+            impacts={simulationActive ? sim.currentImpacts : {}}
+          />
+        </div>
       </div>
 
       <NodeDetailPanel
@@ -94,6 +116,10 @@ export default function StockGraph() {
           if (selectedTicker) setPortfolio((prev) => ({ ...prev, [selectedTicker]: entry }))
         }}
         onRemove={() => { if (selectedTicker) handleRemoveNode(selectedTicker) }}
+        shock={selectedTicker && sim.shocks[selectedTicker] != null ? sim.shocks[selectedTicker] * 100 : null}
+        onShockChange={(pct) => { if (selectedTicker) sim.setShock(selectedTicker, pct) }}
+        simulatedImpact={selectedTicker && simulationActive ? sim.currentImpacts[selectedTicker] ?? null : null}
+        simulationActive={simulationActive}
       />
     </div>
   )

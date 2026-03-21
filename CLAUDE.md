@@ -43,12 +43,11 @@ yfinance → historical prices → log returns → pairwise VAR → influence gr
 | 1 — Python pipeline | **Done** | Fetches prices, computes returns, fits VAR models, stores IRFs in Supabase |
 | 2 — Next.js data layer | **Done** | Supabase client, typed queries, env setup |
 | 3 — Graph UI | **Done** | Drag-drop sandbox, node detail panel, portfolio form |
-| 4 — Simulation engine | Not started | VAR IRF playback at variable speed, "run to" date |
+| 4 — Simulation engine | **Done** | VAR IRF playback at variable speed, "run to" date, node color by impact |
 | 5 — P&L overlay | Not started | P&L computed from portfolio inputs shown on graph nodes |
 
 ## Current next steps
-1. Phase 4: simulation engine — shock input on selected node, VAR IRF playback, speed control, "run to" date
-2. Phase 5: P&L overlay — colour nodes by gain/loss during simulation
+1. Phase 5: P&L overlay — colour nodes by gain/loss based on portfolio inputs + simulated price changes
 
 ## How the UI works (Phase 3)
 1. Left sidebar lists all 503 S&P 500 companies, searchable by ticker or name

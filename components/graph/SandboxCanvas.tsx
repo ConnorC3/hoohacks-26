@@ -19,6 +19,7 @@ interface Props {
   selectedTicker: string | null
   onNodeClick: (ticker: string | null) => void
   onDrop: (ticker: string, modelPosition: { x: number; y: number }) => void
+  impacts?: Record<string, number>  // ticker → decimal impact (e.g. -0.05 = -5%)
 }
 
 const STYLESHEET: Stylesheet[] = [
@@ -35,8 +36,7 @@ const STYLESHEET: Stylesheet[] = [
       color: "#fff",
       "text-outline-width": 1.5,
       "text-outline-color": "#00000066",
-      "background-color": (ele: any) =>
-        SECTOR_COLORS[ele.data("sector")] ?? DEFAULT_SECTOR_COLOR,
+      "background-color": (ele: any) => ele.data("impactColor") ?? DEFAULT_SECTOR_COLOR,
       "border-width": 2,
       "border-color": "#ffffff22",
     },
@@ -71,19 +71,35 @@ const STYLESHEET: Stylesheet[] = [
   },
 ]
 
+function impactColor(impact: number, sectorColor: string): string {
+  const magnitude = Math.min(Math.abs(impact) * 8, 1)
+  if (Math.abs(impact) < 0.001) return sectorColor
+  return impact > 0
+    ? `rgba(16, 185, 129, ${0.4 + magnitude * 0.6})`   // emerald
+    : `rgba(239, 68, 68, ${0.4 + magnitude * 0.6})`    // red
+}
+
 export default function SandboxCanvas({
   nodes,
   edges,
   selectedTicker,
   onNodeClick,
   onDrop,
+  impacts = {},
 }: Props) {
   const cyRef = useRef<Core | null>(null)
 
   // Build elements from props — declarative, survives re-renders
   const elements: ElementDefinition[] = [
     ...nodes.map((n) => ({
-      data: { id: n.ticker, label: n.ticker, sector: n.sector ?? "Unknown", name: n.name },
+      data: {
+        id: n.ticker,
+        label: n.ticker,
+        sector: n.sector ?? "Unknown",
+        name: n.name,
+        impact: impacts[n.ticker] ?? 0,
+        impactColor: impactColor(impacts[n.ticker] ?? 0, SECTOR_COLORS[n.sector ?? ""] ?? DEFAULT_SECTOR_COLOR),
+      },
       position: n.position,
     })),
     ...edges
