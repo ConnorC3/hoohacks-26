@@ -1,0 +1,209 @@
+import { supabase } from "./client"
+import type { Company, DailyPrice, ImpulseResponse, GraphEdge, GraphNode } from "./types"
+
+// ---------------------------------------------------------------------------
+// Companies
+// ---------------------------------------------------------------------------
+
+export async function getAllCompanies(): Promise<Company[]> {
+  const { data, error } = await supabase
+    .from("companies")
+    .select("*")
+    .order("ticker")
+
+  if (error) throw error
+  return data
+}
+
+export async function getCompany(ticker: string): Promise<Company | null> {
+  const { data, error } = await supabase
+    .from("companies")
+    .select("*")
+    .eq("ticker", ticker)
+    .single()
+
+  if (error) throw error
+  return data
+}
+
+// ---------------------------------------------------------------------------
+// Prices
+// ---------------------------------------------------------------------------
+
+export async function getLatestPrices(): Promise<Record<string, number>> {
+  // Fetch the single most recent date available across all tickers
+  const { data: dateRow, error: dateError } = await supabase
+    .from("daily_prices")
+    .select("date")
+    .order("date", { ascending: false })
+    .limit(1)
+    .single()
+
+  if (dateError) throw dateError
+
+  const { data, error } = await supabase
+    .from("daily_prices")
+    .select("ticker, adj_close")
+    .eq("date", dateRow.date)
+
+  if (error) throw error
+
+  return Object.fromEntries(
+    data.filter((r) => r.adj_close !== null).map((r) => [r.ticker, r.adj_close as number])
+  )
+}
+
+export async function getPriceHistory(ticker: string): Promise<DailyPrice[]> {
+  const { data, error } = await supabase
+    .from("daily_prices")
+    .select("*")
+    .eq("ticker", ticker)
+    .order("date")
+
+  if (error) throw error
+  return data
+}
+
+// ---------------------------------------------------------------------------
+// Graph
+// ---------------------------------------------------------------------------
+
+/**
+ * Fetch all companies with their latest price attached.
+ * Used to populate graph nodes.
+ */
+export async function getGraphNodes(): Promise<GraphNode[]> {
+  const [companies, latestPrices] = await Promise.all([
+    getAllCompanies(),
+    getLatestPrices(),
+  ])
+
+  return companies.map((c) => ({
+    ...c,
+    latest_price: latestPrices[c.ticker] ?? null,
+  }))
+}
+
+/**
+ * Fetch aggregated influence edges for graph rendering.
+ * Returns one edge per (from, to) pair with total_weight and min_p_value.
+ *
+ * Filters:
+ *   minWeight   — exclude edges where total_weight < minWeight
+ *   maxPValue   — exclude edges where min_p_value > maxPValue (significance filter)
+ *   sectors     — if provided, only include edges where both endpoints are in these sectors
+ */
+export async function getGraphEdges(filters?: {
+  minWeight?: number
+  maxPValue?: number
+  sectors?: string[]
+}): Promise<GraphEdge[]> {
+  let query = supabase
+    .from("influence_edges")
+    .select("from_ticker, to_ticker, coefficient, p_value")
+
+  if (filters?.maxPValue !== undefined) {
+    query = query.lte("p_value", filters.maxPValue)
+  }
+
+  const { data, error } = await query
+  if (error) throw error
+
+  // Aggregate per (from, to) pair in JS — sum |coefficient|, track min p_value
+  const map = new Map<string, GraphEdge>()
+  for (const row of data) {
+    const key = `${row.from_ticker}__${row.to_ticker}`
+    const existing = map.get(key)
+    if (existing) {
+      existing.total_weight += Math.abs(row.coefficient)
+      if (row.p_value !== null) {
+        existing.min_p_value =
+          existing.min_p_value === null
+            ? row.p_value
+            : Math.min(existing.min_p_value, row.p_value)
+      }
+    } else {
+      map.set(key, {
+        from_ticker: row.from_ticker,
+        to_ticker: row.to_ticker,
+        total_weight: Math.abs(row.coefficient),
+        min_p_value: row.p_value,
+      })
+    }
+  }
+
+  let edges = Array.from(map.values())
+
+  if (filters?.minWeight !== undefined) {
+    edges = edges.filter((e) => e.total_weight >= filters.minWeight!)
+  }
+
+  return edges
+}
+
+/**
+ * Fetch aggregated influence edges between a specific set of tickers only.
+ * Used by the sandbox — only draws edges between nodes the user has added.
+ */
+export async function getEdgesBetween(tickers: string[]): Promise<GraphEdge[]> {
+  if (tickers.length < 2) return []
+
+  const { data, error } = await supabase
+    .from("influence_edges")
+    .select("from_ticker, to_ticker, coefficient, p_value")
+    .in("from_ticker", tickers)
+    .in("to_ticker", tickers)
+
+  if (error) throw error
+
+  const map = new Map<string, GraphEdge>()
+  for (const row of data) {
+    const key = `${row.from_ticker}__${row.to_ticker}`
+    const existing = map.get(key)
+    if (existing) {
+      existing.total_weight += Math.abs(row.coefficient)
+      if (row.p_value !== null) {
+        existing.min_p_value =
+          existing.min_p_value === null
+            ? row.p_value
+            : Math.min(existing.min_p_value, row.p_value)
+      }
+    } else {
+      map.set(key, {
+        from_ticker: row.from_ticker,
+        to_ticker: row.to_ticker,
+        total_weight: Math.abs(row.coefficient),
+        min_p_value: row.p_value,
+      })
+    }
+  }
+
+  return Array.from(map.values())
+}
+
+// ---------------------------------------------------------------------------
+// Impulse responses (used by simulation engine)
+// ---------------------------------------------------------------------------
+
+/**
+ * Fetch all pre-computed IRF values for a given shock origin ticker.
+ * Returns a map: to_ticker → irf_value[] (indexed by horizon 1..N)
+ */
+export async function getImpulseResponses(
+  fromTicker: string
+): Promise<Record<string, number[]>> {
+  const { data, error } = await supabase
+    .from("impulse_responses")
+    .select("to_ticker, horizon, irf_value")
+    .eq("from_ticker", fromTicker)
+    .order("horizon")
+
+  if (error) throw error
+
+  const result: Record<string, number[]> = {}
+  for (const row of data) {
+    if (!result[row.to_ticker]) result[row.to_ticker] = []
+    result[row.to_ticker][row.horizon - 1] = row.irf_value
+  }
+  return result
+}
