@@ -25,9 +25,11 @@ export default function ImportModal({ isOpen, onClose, companies, onImport }: Pr
   const companySet = new Set(companies.map((c) => c.ticker.toUpperCase()))
 
   // Parse tab-separated paste into rows/columns
+  // Auto-detect delimiter: use tab if any line contains one, otherwise comma
+  const delimiter = raw.includes("\t") ? "\t" : ","
   const rows = raw
     .split("\n")
-    .map((line) => line.split("\t").map((cell) => cell.trim()))
+    .map((line) => line.split(delimiter).map((cell) => cell.trim()))
     .filter((cols) => cols.some((c) => c.length > 0))
 
   const numCols = rows.length > 0 ? Math.max(...rows.map((r) => r.length)) : 0
