@@ -7,6 +7,7 @@ import { getAllCompanies, getLatestPrices, getEdgesBetween } from "@/lib/supabas
 import CompanySidebar from "./CompanySidebar"
 import NodeDetailPanel from "./NodeDetailPanel"
 import SimulationControls from "@/components/simulation/SimulationControls"
+import SimulationModal from "@/components/simulation/SimulationModal"
 import { useSimulation } from "@/components/simulation/useSimulation"
 import ScenarioPanel from "./ScenarioPanel"
 import type { PortfolioEntry } from "./NodeDetailPanel"
@@ -22,6 +23,8 @@ export default function StockGraph() {
   const [selectedTicker, setSelectedTicker] = useState<string | null>(null)
   const [portfolio, setPortfolio] = useState<Record<string, PortfolioEntry>>({})
   const [error, setError] = useState<string | null>(null)
+  const [showSimModal, setShowSimModal] = useState(false)
+  const [showWeights, setShowWeights] = useState(false)
 
   const companyMap = useRef<Map<string, Company>>(new Map())
   const addedTickers = new Set(canvasNodes.map((n) => n.ticker))
@@ -90,15 +93,19 @@ export default function StockGraph() {
 
   if (error) {
     return (
-      <div className="flex items-center justify-center h-full text-red-400 text-sm">
+      <div className="flex items-center justify-center h-full text-sm"
+        style={{ color: 'var(--accent-red)', background: 'var(--base)' }}>
         Error: {error}
       </div>
     )
   }
 
   return (
-    <div className="flex h-full bg-zinc-950 overflow-hidden">
+    <div className="flex h-full overflow-hidden" style={{ background: 'var(--base)' }}>
       <CompanySidebar companies={companies} addedTickers={addedTickers} />
+
+      {/* Left separator */}
+      <div className="panel-separator" />
 
       <div className="flex flex-col flex-1 overflow-hidden">
         <ScenarioPanel
@@ -120,6 +127,10 @@ export default function StockGraph() {
           onReset={sim.reset}
           onSpeedChange={sim.setSpeed}
           onRunToDateChange={sim.setRunToDate}
+          impactedCount={Object.keys(sim.currentImpacts).filter((t) => Math.abs(sim.currentImpacts[t]) > 0.001).length}
+          onViewResults={() => setShowSimModal(true)}
+          showWeights={showWeights}
+          onToggleWeights={() => setShowWeights((v) => !v)}
         />
 
         <div className="flex flex-1 overflow-hidden">
@@ -130,9 +141,13 @@ export default function StockGraph() {
             onNodeClick={setSelectedTicker}
             onDrop={handleDrop}
             impacts={simulationActive ? sim.currentImpacts : {}}
+            showWeights={showWeights}
           />
         </div>
       </div>
+
+      {/* Right separator */}
+      <div className="panel-separator" />
 
       <NodeDetailPanel
         company={selectedCompany}
@@ -147,6 +162,16 @@ export default function StockGraph() {
         onShockChange={(pct) => { if (selectedTicker) sim.setShock(selectedTicker, pct) }}
         simulatedImpact={selectedTicker && simulationActive ? sim.currentImpacts[selectedTicker] ?? null : null}
         simulationActive={simulationActive}
+      />
+
+      <SimulationModal
+        open={showSimModal}
+        onClose={() => setShowSimModal(false)}
+        impacts={sim.currentImpacts}
+        shocks={sim.shocks}
+        canvasNodes={canvasNodes}
+        portfolio={portfolio}
+        latestPrices={latestPrices}
       />
     </div>
   )

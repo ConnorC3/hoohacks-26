@@ -26,23 +26,32 @@ export default function CompanySidebar({ companies, addedTickers }: Props) {
   }
 
   return (
-    <aside className="flex flex-col w-64 bg-zinc-900 border-r border-zinc-700 flex-shrink-0">
+    <aside className="flex flex-col w-64 glass-panel-solid border-r flex-shrink-0"
+      style={{ borderColor: 'var(--glass-border)' }}>
       {/* Header */}
-      <div className="px-4 py-4 border-b border-zinc-700">
-        <h2 className="text-white font-semibold text-sm mb-3">S&amp;P 500 Companies</h2>
+      <div className="px-4 py-4 border-b" style={{ borderColor: 'var(--glass-border)' }}>
+        <div className="flex items-center gap-2 mb-3">
+          <div className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--accent-green)' }} />
+          <h2 className="font-semibold text-sm tracking-wide" style={{ color: 'var(--text-primary)' }}>
+            S&amp;P 500
+          </h2>
+          <span className="text-xs ml-auto" style={{ color: 'var(--text-muted)' }}>
+            {companies.length}
+          </span>
+        </div>
         <input
           type="text"
-          placeholder="Search ticker or name…"
+          placeholder="Search ticker or name..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-full bg-zinc-800 text-white text-sm rounded px-3 py-2 placeholder-zinc-500 border border-zinc-700 focus:outline-none focus:border-indigo-500"
+          className="w-full input-dark text-sm rounded-lg px-3 py-2"
         />
       </div>
 
       {/* Company list */}
       <div className="flex-1 overflow-y-auto">
         {filtered.length === 0 ? (
-          <p className="text-zinc-500 text-xs px-4 py-4">No results.</p>
+          <p className="text-xs px-4 py-4" style={{ color: 'var(--text-muted)' }}>No results.</p>
         ) : (
           filtered.map((company) => {
             const added = addedTickers.has(company.ticker)
@@ -52,30 +61,50 @@ export default function CompanySidebar({ companies, addedTickers }: Props) {
                 key={company.ticker}
                 draggable={!added}
                 onDragStart={(e) => handleDragStart(e, company.ticker)}
-                className={`flex items-center gap-3 px-4 py-2.5 border-b border-zinc-800 select-none transition-colors ${
+                className={`group flex items-center gap-3 px-4 py-2.5 border-b select-none transition-all duration-200 ${
                   added
-                    ? "opacity-40 cursor-default"
-                    : "cursor-grab hover:bg-zinc-800 active:cursor-grabbing"
+                    ? "opacity-30 cursor-default"
+                    : "cursor-grab active:cursor-grabbing"
                 }`}
+                style={{
+                  borderColor: 'rgba(255,255,255,0.04)',
+                  background: added ? 'transparent' : undefined,
+                }}
+                onMouseEnter={(e) => {
+                  if (!added) e.currentTarget.style.background = 'rgba(255,255,255,0.04)'
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'transparent'
+                }}
                 title={added ? "Already on canvas" : `Drag ${company.ticker} onto canvas`}
               >
                 <span
-                  className="w-2 h-2 rounded-full flex-shrink-0"
-                  style={{ backgroundColor: color }}
+                  className="w-2 h-2 rounded-full flex-shrink-0 transition-shadow duration-200"
+                  style={{
+                    backgroundColor: color,
+                    boxShadow: added ? 'none' : `0 0 6px ${color}40`,
+                  }}
                 />
                 <div className="flex flex-col min-w-0">
-                  <span className="text-white text-xs font-mono font-semibold">
+                  <span className="text-xs font-mono font-semibold" style={{ color: 'var(--text-primary)' }}>
                     {company.ticker}
                   </span>
-                  <span className="text-zinc-400 text-xs truncate">{company.name}</span>
+                  <span className="text-xs truncate" style={{ color: 'var(--text-secondary)' }}>
+                    {company.name}
+                  </span>
                 </div>
+                {added && (
+                  <span className="ml-auto text-xs" style={{ color: 'var(--text-muted)' }}>
+                    Added
+                  </span>
+                )}
               </div>
             )
           })
         )}
       </div>
 
-      <div className="px-4 py-3 border-t border-zinc-700 text-zinc-500 text-xs">
+      <div className="px-4 py-3 border-t text-xs" style={{ borderColor: 'var(--glass-border)', color: 'var(--text-muted)' }}>
         {filtered.length} companies · drag to add
       </div>
     </aside>

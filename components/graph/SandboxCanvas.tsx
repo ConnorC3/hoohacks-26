@@ -1,6 +1,6 @@
 "use client"
 
-import { useRef, useEffect } from "react"
+import { useRef, useEffect, useState, useMemo } from "react"
 import CytoscapeComponent from "react-cytoscapejs"
 import type { Core, ElementDefinition, Stylesheet } from "cytoscape"
 import type { GraphEdge } from "@/lib/supabase/types"
@@ -20,63 +20,16 @@ interface Props {
   onNodeClick: (ticker: string | null) => void
   onDrop: (ticker: string, modelPosition: { x: number; y: number }) => void
   impacts?: Record<string, number>  // ticker → decimal impact (e.g. -0.05 = -5%)
+  showWeights?: boolean
 }
 
-const STYLESHEET: Stylesheet[] = [
-  {
-    selector: "node",
-    style: {
-      width: 52,
-      height: 52,
-      label: "data(label)",
-      "font-size": 10,
-      "font-weight": "bold",
-      "text-valign": "center",
-      "text-halign": "center",
-      color: "#fff",
-      "text-outline-width": 1.5,
-      "text-outline-color": "#00000066",
-      "background-color": (ele: any) => ele.data("impactColor") ?? DEFAULT_SECTOR_COLOR,
-      "border-width": 2,
-      "border-color": "#ffffff22",
-    },
-  },
-  {
-    selector: "node:selected",
-    style: {
-      "border-width": 3,
-      "border-color": "#ffffff",
-      "background-color": "#6366f1",
-      color: "#ffffff",
-    },
-  },
-  {
-    selector: "edge",
-    style: {
-      width: (ele: any) => Math.min(Math.max(ele.data("weight") * 5, 1), 5),
-      "line-color": "#475569",
-      "target-arrow-color": "#475569",
-      "target-arrow-shape": "triangle",
-      "curve-style": "bezier",
-      opacity: 0.8,
-    },
-  },
-  {
-    selector: "edge:selected",
-    style: {
-      "line-color": "#818cf8",
-      "target-arrow-color": "#818cf8",
-      opacity: 1,
-    },
-  },
-]
 
 function impactColor(impact: number, sectorColor: string): string {
   const magnitude = Math.min(Math.abs(impact) * 8, 1)
   if (Math.abs(impact) < 0.001) return sectorColor
   return impact > 0
-    ? `rgba(16, 185, 129, ${0.4 + magnitude * 0.6})`   // emerald
-    : `rgba(239, 68, 68, ${0.4 + magnitude * 0.6})`    // red
+    ? `rgba(0, 255, 135, ${0.5 + magnitude * 0.5})`    // accent-green
+    : `rgba(255, 51, 102, ${0.5 + magnitude * 0.5})`   // accent-red
 }
 
 export default function SandboxCanvas({
@@ -86,8 +39,83 @@ export default function SandboxCanvas({
   onNodeClick,
   onDrop,
   impacts = {},
+  showWeights = false,
 }: Props) {
   const cyRef = useRef<Core | null>(null)
+  const [isDragOver, setIsDragOver] = useState(false)
+
+  const stylesheet = useMemo((): Stylesheet[] => [
+    {
+      selector: "node",
+      style: {
+        width: 52,
+        height: 52,
+        label: "data(label)",
+        "font-size": 10,
+        "font-family": "var(--font-geist-mono), monospace",
+        "font-weight": "bold",
+        "text-valign": "center",
+        "text-halign": "center",
+        color: "#f0f0f5",
+        "text-outline-width": 2,
+        "text-outline-color": "#0a0a0f",
+        "text-outline-opacity": 0.8,
+        "background-color": (ele: any) => ele.data("impactColor") ?? DEFAULT_SECTOR_COLOR,
+        "background-opacity": 0.85,
+        "border-width": 1.5,
+        "border-color": "rgba(255, 255, 255, 0.12)",
+        "overlay-padding": 6,
+        "overlay-opacity": 0,
+        "shadow-blur": 15,
+        "shadow-color": (ele: any) => ele.data("impactColor") ?? DEFAULT_SECTOR_COLOR,
+        "shadow-opacity": 0.4,
+        "shadow-offset-x": 0,
+        "shadow-offset-y": 0,
+      },
+    },
+    {
+      selector: "node:selected",
+      style: {
+        "border-width": 2,
+        "border-color": "#7b61ff",
+        "background-color": "#7b61ff",
+        "shadow-color": "#7b61ff",
+        "shadow-opacity": 0.6,
+        "shadow-blur": 25,
+        color: "#ffffff",
+      },
+    },
+    {
+      selector: "edge",
+      style: {
+        width: (ele: any) => Math.min(Math.max(ele.data("weight") * 5, 0.8), 4),
+        "line-color": "#2a2a3f",
+        "target-arrow-color": "#2a2a3f",
+        "target-arrow-shape": "triangle",
+        "arrow-scale": 0.8,
+        "curve-style": "bezier",
+        opacity: 0.5,
+        "line-style": "solid",
+        label: showWeights ? "data(weightLabel)" : "",
+        "font-size": 9,
+        "font-family": "var(--font-geist-mono), monospace",
+        color: "rgba(255,255,255,0.65)",
+        "text-background-color": "#0d0d18",
+        "text-background-opacity": showWeights ? 0.85 : 0,
+        "text-background-padding": "2px",
+        "text-background-shape": "roundrectangle",
+      },
+    },
+    {
+      selector: "edge:selected",
+      style: {
+        "line-color": "#7b61ff",
+        "target-arrow-color": "#7b61ff",
+        opacity: 0.9,
+        width: (ele: any) => Math.min(Math.max(ele.data("weight") * 5, 1.5), 5),
+      },
+    },
+  ], [showWeights])
 
   // Build elements from props — declarative, survives re-renders
   const elements: ElementDefinition[] = [
@@ -113,6 +141,7 @@ export default function SandboxCanvas({
           source: e.from_ticker,
           target: e.to_ticker,
           weight: e.total_weight,
+          weightLabel: e.total_weight.toFixed(3),
         },
       })),
   ]
@@ -142,10 +171,16 @@ export default function SandboxCanvas({
   function handleDragOver(e: React.DragEvent) {
     e.preventDefault()
     e.dataTransfer.dropEffect = "copy"
+    setIsDragOver(true)
+  }
+
+  function handleDragLeave() {
+    setIsDragOver(false)
   }
 
   function handleDrop(e: React.DragEvent) {
     e.preventDefault()
+    setIsDragOver(false)
     const ticker = e.dataTransfer.getData("ticker")
     if (!ticker || !cyRef.current) return
 
@@ -166,26 +201,55 @@ export default function SandboxCanvas({
 
   return (
     <div
-      className="w-full h-full relative bg-zinc-950"
+      className={`w-full h-full relative dot-grid-bg transition-all duration-300 ${
+        isDragOver ? 'ring-1 ring-inset' : ''
+      }`}
+      style={{
+        ...(isDragOver ? {
+          ringColor: 'var(--accent-purple)',
+          boxShadow: 'inset 0 0 60px rgba(123, 97, 255, 0.06)',
+          animation: 'drop-zone-pulse 2s ease-in-out infinite',
+        } : {}),
+      }}
       onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
       {nodes.length === 0 && (
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none select-none">
-          <p className="text-zinc-700 text-sm">Drag companies from the sidebar to add them</p>
+        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none select-none gap-4"
+          style={{ animation: 'fade-in-up 0.5s ease-out' }}>
+          <div className="w-16 h-16 rounded-2xl flex items-center justify-center"
+            style={{
+              background: 'rgba(123, 97, 255, 0.08)',
+              border: '1px solid rgba(123, 97, 255, 0.15)',
+              animation: 'float 4s ease-in-out infinite',
+            }}>
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--accent-purple)' }}>
+              <circle cx="12" cy="12" r="3"/>
+              <path d="M12 2v4m0 12v4M2 12h4m12 0h4"/>
+              <path d="m4.93 4.93 2.83 2.83m8.48 8.48 2.83 2.83M4.93 19.07l2.83-2.83m8.48-8.48 2.83-2.83"/>
+            </svg>
+          </div>
+          <div className="text-center">
+            <p className="text-sm font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>
+              Build your portfolio graph
+            </p>
+            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+              Drag companies from the sidebar to visualize correlations
+            </p>
+          </div>
         </div>
       )}
 
       <CytoscapeComponent
         elements={elements}
         style={{ width: "100%", height: "100%" }}
-        stylesheet={STYLESHEET}
+        stylesheet={stylesheet}
         layout={{ name: "preset" }}
         cy={(cy) => {
           cyRef.current = cy
           cy.removeAllListeners()
           cy.on("tap", "node", (evt) => {
-            console.log("[SandboxCanvas] node tapped:", evt.target.id())
             onNodeClick(evt.target.id())
           })
           cy.on("tap", (evt) => {
