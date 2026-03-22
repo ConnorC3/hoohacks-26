@@ -1,9 +1,20 @@
 import { GoogleGenAI } from "@google/genai"
 import { NextRequest, NextResponse } from "next/server"
+import { createRateLimiter } from "@/lib/rateLimit"
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! })
+const limiter = createRateLimiter({ windowMs: 60_000, max: 10 })
 
 export async function POST(req: NextRequest) {
+  const ip = req.headers.get("x-forwarded-for")?.split(",")[0].trim() ?? "unknown"
+  const { allowed, retryAfterMs } = limiter.check(ip)
+  if (!allowed) {
+    return NextResponse.json(
+      { error: `Rate limit exceeded. Try again in ${Math.ceil(retryAfterMs / 1000)}s.` },
+      { status: 429, headers: { "Retry-After": String(Math.ceil(retryAfterMs / 1000)) } }
+    )
+  }
+
   try {
     const { prompt, sectors } = await req.json()
     if (!prompt || !sectors?.length) {

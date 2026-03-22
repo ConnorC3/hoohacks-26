@@ -62,7 +62,7 @@ export default function ScenarioPanel({ canvasNodes, onApply, onClear }: Props) 
         <input
           type="text"
           className="flex-1 bg-zinc-800 text-zinc-100 text-sm rounded px-3 py-1.5 placeholder-zinc-500 border border-zinc-700 focus:outline-none focus:border-indigo-500"
-          placeholder="e.g. What happens if there is a trade war with China?"
+          placeholder="e.g. What happens if the CEO of Company X resigns?"
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && handleAnalyze()}

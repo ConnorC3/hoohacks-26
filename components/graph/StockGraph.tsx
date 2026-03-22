@@ -8,6 +8,7 @@ import CompanySidebar from "./CompanySidebar"
 import NodeDetailPanel from "./NodeDetailPanel"
 import SimulationControls from "@/components/simulation/SimulationControls"
 import SimulationModal from "@/components/simulation/SimulationModal"
+import RiskModal from "@/components/simulation/RiskModal"
 import { useSimulation } from "@/components/simulation/useSimulation"
 import ScenarioPanel from "./ScenarioPanel"
 import type { PortfolioEntry } from "./NodeDetailPanel"
@@ -30,6 +31,7 @@ export default function StockGraph() {
   const [error, setError] = useState<string | null>(null)
   const [showSimModal, setShowSimModal] = useState(false)
   const [showWeights, setShowWeights] = useState(false)
+  const [showRiskModal, setShowRiskModal] = useState(false)
   const [priceHistory, setPriceHistory] = useState<PricePoint[]>([])
 
   const companyMap = useRef<Map<string, Company>>(new Map())
@@ -113,6 +115,14 @@ export default function StockGraph() {
     sim.reset()
   }
 
+  function handleClearCanvas() {
+    for (const node of canvasNodes) sim.setShock(node.ticker, null)
+    sim.reset()
+    setCanvasNodes([])
+    setPortfolio({})
+    setSelectedTicker(null)
+  }
+
   function handleRemoveNode(ticker: string) {
     setCanvasNodes((prev) => prev.filter((n) => n.ticker !== ticker))
     setPortfolio((prev) => { const next = { ...prev }; delete next[ticker]; return next })
@@ -155,6 +165,11 @@ export default function StockGraph() {
           onViewResults={() => setShowSimModal(true)}
           showWeights={showWeights}
           onToggleWeights={() => setShowWeights((v) => !v)}
+          onRiskAnalysis={() => setShowRiskModal((v) => !v)}
+          hasPortfolio={Object.values(portfolio).some((e) => parseFloat(e.shares) > 0)}
+          onClearCanvas={handleClearCanvas}
+          canvasEmpty={canvasNodes.length === 0}
+          riskModalOpen={showRiskModal}
         />
 
         <div className="flex flex-1 overflow-hidden">
@@ -197,6 +212,15 @@ export default function StockGraph() {
         canvasNodes={canvasNodes}
         portfolio={portfolio}
         latestPrices={latestPrices}
+      />
+
+      <RiskModal
+        isOpen={showRiskModal}
+        onClose={() => setShowRiskModal(false)}
+        canvasNodes={canvasNodes}
+        portfolio={portfolio}
+        latestPrices={latestPrices}
+        edges={edges}
       />
     </div>
   )
