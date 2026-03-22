@@ -117,6 +117,20 @@ export default function SandboxCanvas({
       })),
   ]
 
+  // Imperatively sync impact colors — react-cytoscapejs doesn't diff existing node data
+  useEffect(() => {
+    const cy = cyRef.current
+    if (!cy) return
+    cy.batch(() => {
+      for (const node of nodes) {
+        const impact = impacts[node.ticker] ?? 0
+        const color = impactColor(impact, SECTOR_COLORS[node.sector ?? ""] ?? DEFAULT_SECTOR_COLOR)
+        const ele = cy.getElementById(node.ticker)
+        if (ele.length > 0) ele.data("impactColor", color)
+      }
+    })
+  }, [impacts, nodes])
+
   // Sync selected node
   useEffect(() => {
     const cy = cyRef.current

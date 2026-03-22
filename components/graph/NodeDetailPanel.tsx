@@ -405,7 +405,7 @@ function SimulateTab({
         }`}>
           <p className="text-zinc-400 text-xs">Shock applied</p>
           <p className={`text-lg font-bold ${shock < 0 ? "text-red-400" : "text-emerald-400"}`}>
-            {shock > 0 ? "+" : ""}{shock}%
+            {shock > 0 ? "+" : ""}{Math.round(shock)}%
           </p>
           <p className="text-zinc-500 text-xs">
             Press Run Simulation above to propagate this shock.

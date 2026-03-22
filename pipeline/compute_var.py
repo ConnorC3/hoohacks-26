@@ -108,10 +108,11 @@ def fit_pair(
     from_ticker: str,
     to_ticker: str,
     returns_wide: pd.DataFrame,
-) -> tuple[list[dict], list[dict]] | None:
+) -> tuple[tuple[list[dict], list[dict]], None] | tuple[None, str]:
     """
     Fit a bivariate VAR on [from_ticker, to_ticker] returns.
-    Returns (edge_records, irf_records) or None if fitting fails.
+    Returns ((edge_records, irf_records), None) on success,
+    or (None, reason_str) on failure.
 
     Edge record fields:
       from_ticker, to_ticker, lag, coefficient, p_value, computed_at
@@ -123,13 +124,17 @@ def fit_pair(
         # Align and drop NaNs
         series = returns_wide[[from_ticker, to_ticker]].dropna()
         if len(series) < MIN_OBSERVATIONS:
-            return None
+            return None, f"too_few_obs ({len(series)} < {MIN_OBSERVATIONS})"
 
         model = VAR(series)
         result = model.fit(maxlags=VAR_MAX_LAGS, ic="aic", trend="c")
 
         now = datetime.datetime.utcnow().isoformat()
         p = result.k_ar  # selected lag order
+
+        # AIC chose a constant-only model — no predictive VAR relationship exists
+        if p == 0:
+            return None, "no_var_relationship (k_ar=0)"
 
         # --- influence_edges: one row per lag ---
         edge_records = []
@@ -171,10 +176,10 @@ def fit_pair(
                 "computed_at": now,
             })
 
-        return edge_records, irf_records
+        return (edge_records, irf_records), None
 
-    except Exception:
-        return None
+    except Exception as e:
+        return None, f"{type(e).__name__}: {e}"
 
 
 # ---------------------------------------------------------------------------
@@ -222,6 +227,8 @@ def run() -> None:
     chunk_size = 1000
     all_edge_records: list[dict] = []
     all_irf_records: list[dict] = []
+    total_failed = 0
+    failure_counts: dict[str, int] = {}
 
     for chunk_start in tqdm(range(0, len(remaining), chunk_size), desc="VAR chunks"):
         chunk = remaining[chunk_start:chunk_start + chunk_size]
@@ -230,10 +237,15 @@ def run() -> None:
             delayed(fit_pair)(a, b, returns_wide) for a, b in chunk
         )
 
-        for res in results:
-            if res is None:
+        for res, (a, b) in zip(results, chunk):
+            data, reason = res
+            if data is None:
+                total_failed += 1
+                # Bucket by first word of reason (e.g. "too_few_obs", "LinAlgError")
+                bucket = reason.split(" ")[0].split(":")[0]
+                failure_counts[bucket] = failure_counts.get(bucket, 0) + 1
                 continue
-            edges, irfs = res
+            edges, irfs = data
             all_edge_records.extend(edges)
             all_irf_records.extend(irfs)
 
@@ -245,7 +257,49 @@ def run() -> None:
             upsert_irfs(all_irf_records)
             all_irf_records = []
 
+    succeeded = len(remaining) - total_failed
+    print(f"  Results: {succeeded:,} succeeded, {total_failed:,} failed")
+    if failure_counts:
+        for bucket, count in sorted(failure_counts.items(), key=lambda x: -x[1]):
+            print(f"    {bucket}: {count:,}")
     print("=== Step 3 complete ===\n")
+
+
+def diagnose() -> None:
+    """
+    Compare all expected directed pairs against what's in influence_edges.
+    Prints a summary and writes missing pairs to missing_pairs.txt.
+    """
+    print("=== Diagnosing missing influence_edges pairs ===")
+
+    returns_wide = load_all_returns()
+    tickers = [t for t in get_all_tickers() if t in returns_wide.columns]
+    all_pairs = set(permutations(tickers, 2))
+    print(f"  Expected pairs: {len(all_pairs):,} ({len(tickers)} tickers)")
+
+    completed = get_completed_pairs()
+    print(f"  Stored in DB:   {len(completed):,}")
+
+    missing = all_pairs - completed
+    print(f"  Missing:        {len(missing):,}")
+
+    if missing:
+        out_path = "missing_pairs.txt"
+        with open(out_path, "w") as f:
+            for a, b in sorted(missing):
+                f.write(f"{a},{b}\n")
+        print(f"  Missing pairs written to {out_path}")
+
+    # Show which tickers account for the most missing pairs
+    from collections import Counter
+    from_counts: Counter = Counter()
+    for a, _ in missing:
+        from_counts[a] += 1
+    print(f"\n  Top 10 tickers with most missing outgoing edges:")
+    for ticker, cnt in from_counts.most_common(10):
+        print(f"    {ticker}: {cnt} missing")
+
+    print("=== Diagnose complete ===\n")
 
 
 if __name__ == "__main__":

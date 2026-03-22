@@ -8,6 +8,7 @@ import CompanySidebar from "./CompanySidebar"
 import NodeDetailPanel from "./NodeDetailPanel"
 import SimulationControls from "@/components/simulation/SimulationControls"
 import { useSimulation } from "@/components/simulation/useSimulation"
+import ScenarioPanel from "./ScenarioPanel"
 import type { PortfolioEntry } from "./NodeDetailPanel"
 import type { CanvasNode } from "./SandboxCanvas"
 
@@ -56,6 +57,27 @@ export default function StockGraph() {
     ])
   }
 
+  function handleScenarioApply(sectorShocks: Record<string, number>) {
+    // Clear all existing shocks so stale values from previous scenarios don't carry over
+    for (const node of canvasNodes) sim.setShock(node.ticker, null)
+    // Build per-ticker shock map and update UI shock display
+    const tickerShocks: Record<string, number> = {}
+    for (const node of canvasNodes) {
+      const pct = sectorShocks[node.sector ?? ""] ?? 0
+      if (pct !== 0) {
+        sim.setShock(node.ticker, pct)
+        tickerShocks[node.ticker] = pct / 100
+      }
+    }
+    // play() resets all visual state itself before running
+    sim.play(tickerShocks)
+  }
+
+  function handleScenarioClear() {
+    for (const node of canvasNodes) sim.setShock(node.ticker, null)
+    sim.reset()
+  }
+
   function handleRemoveNode(ticker: string) {
     setCanvasNodes((prev) => prev.filter((n) => n.ticker !== ticker))
     setPortfolio((prev) => { const next = { ...prev }; delete next[ticker]; return next })
@@ -79,6 +101,11 @@ export default function StockGraph() {
       <CompanySidebar companies={companies} addedTickers={addedTickers} />
 
       <div className="flex flex-col flex-1 overflow-hidden">
+        <ScenarioPanel
+          canvasNodes={canvasNodes}
+          onApply={handleScenarioApply}
+          onClear={handleScenarioClear}
+        />
         <SimulationControls
           status={sim.status}
           currentHorizon={sim.currentHorizon}
@@ -87,7 +114,7 @@ export default function StockGraph() {
           runToDate={sim.runToDate}
           loading={sim.loading}
           error={sim.error}
-          onPlay={sim.play}
+          onPlay={() => sim.play()}
           onPause={sim.pause}
           onResume={sim.resume}
           onReset={sim.reset}

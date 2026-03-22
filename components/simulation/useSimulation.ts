@@ -34,7 +34,7 @@ export interface UseSimulationReturn {
   currentImpacts: Record<string, number>
 
   // Controls
-  play: () => Promise<void>
+  play: (overrideShocks?: Record<string, number>) => Promise<void>
   pause: () => void
   resume: () => void
   reset: () => void
@@ -84,37 +84,48 @@ export function useSimulation(canvasTickers: string[]): UseSimulationReturn {
     }
   }, [status, speed, horizonLimit])
 
-  const play = useCallback(async () => {
-    const shockedTickers = Object.keys(shocks).filter((t) => shocks[t] !== 0)
+  const play = useCallback(async (overrideShocks?: Record<string, number>) => {
+    const effectiveShocks = overrideShocks ?? shocks
+    const shockedTickers = Object.keys(effectiveShocks).filter((t) => effectiveShocks[t] !== 0)
     if (shockedTickers.length === 0) {
       setError("Apply a shock to at least one stock before running.")
       return
     }
 
+    // Reset to idle so stale impacts don't show during the IRF fetch
+    setStatus("idle")
+    setAllImpacts({})
+    setCurrentHorizon(0)
     setLoading(true)
     setError(null)
 
     try {
-      // Fetch IRFs for all shocked tickers
+      // Fetch IRFs for all canvas tickers so indirect paths can be followed
       const irfs: Record<string, Record<string, number[]>> = {}
       await Promise.all(
-        shockedTickers.map(async (ticker) => {
+        canvasTickers.map(async (ticker) => {
           irfs[ticker] = await getImpulseResponses(ticker)
+          console.log(`[sim] IRF for ${ticker}:`, Object.keys(irfs[ticker]).length, "targets")
         })
       )
 
       const result = runSimulation({
-        shocks,
+        shocks: effectiveShocks,
         irfs,
         canvasTickers,
         maxHorizon: MAX_HORIZON,
       })
 
+      console.log("[sim] impacts computed:", Object.fromEntries(
+        Object.entries(result.impacts).map(([t, v]) => [t, v[0].toFixed(4)])
+      ))
+
       setAllImpacts(result.impacts)
       setCurrentHorizon(0)
       setStatus("running")
     } catch (e: any) {
-      setError(e.message)
+      console.error("[sim] play() failed:", e)
+      setError(String(e?.message ?? e))
     } finally {
       setLoading(false)
     }

@@ -4,13 +4,18 @@
  * Given user-applied shocks and pre-fetched IRFs, computes the full
  * cumulative price impact on every canvas stock at every time horizon.
  *
- * Impact model:
- *   impact_B(h) = Σ_A [ shock_A * Σ_{k=1}^{h} irf(A→B, k) ]
+ * Two-pass propagation model:
  *
- * Where:
- *   shock_A     = user-specified return shock on stock A (e.g. -0.10 for -10%)
- *   irf(A→B, k) = pre-computed IRF value: response of B's return to unit shock in A at lag k
- *   impact_B(h) = cumulative % price change of B after h days
+ *   Pass 1 (direct): for each shocked ticker A and each canvas ticker B,
+ *     impact_B(h) += shock_A * Σ_{k=1}^{h} irf(A→B, k)
+ *     (uses direct A→B IRF if it exists in the DB)
+ *
+ *   Pass 2 (indirect): for pairs A→B missing a direct IRF, route through
+ *     canvas intermediaries M that do have A→M and M→B IRFs:
+ *     impact_B(h) += [shock_A * Σ irf(A→M)] * Σ_{k=1}^{h} irf(M→B, k) * INDIRECT_DECAY
+ *
+ * The indirect pass handles the common case where the pipeline has not yet
+ * computed all 250k pairs, so some direct A→B edges are absent.
  */
 
 export interface SimulationInput {
@@ -28,26 +33,27 @@ export interface SimulationOutput {
   impacts: Record<string, number[]>
 }
 
+// Discount applied to indirect (2-hop) contributions to avoid double-counting
+// and reflect that chained IRFs are an approximation.
+const INDIRECT_DECAY = 0.4
+
 export function runSimulation(input: SimulationInput): SimulationOutput {
   const { shocks, irfs, canvasTickers, maxHorizon } = input
   const impacts: Record<string, number[]> = {}
 
+  // ── Pass 1: direct propagation ──────────────────────────────────────────
   for (const target of canvasTickers) {
     const timeline = new Array<number>(maxHorizon).fill(0)
 
     for (const [source, shockPct] of Object.entries(shocks)) {
       if (source === target) {
-        // Direct shock — persists at full magnitude throughout horizon
-        for (let h = 0; h < maxHorizon; h++) {
-          timeline[h] += shockPct
-        }
+        for (let h = 0; h < maxHorizon; h++) timeline[h] += shockPct
         continue
       }
 
       const irfValues = irfs[source]?.[target]
       if (!irfValues || irfValues.length === 0) continue
 
-      // Accumulate IRF contributions across horizons
       let cumulative = 0
       for (let h = 0; h < maxHorizon; h++) {
         cumulative += (irfValues[h] ?? 0) * shockPct
@@ -56,6 +62,35 @@ export function runSimulation(input: SimulationInput): SimulationOutput {
     }
 
     impacts[target] = timeline
+  }
+
+  // ── Pass 2: indirect propagation through canvas intermediaries ───────────
+  // Only fills gaps where no direct IRF exists for a (source → target) pair.
+  for (const [source, shockPct] of Object.entries(shocks)) {
+    for (const target of canvasTickers) {
+      if (source === target) continue
+      // Skip if a direct IRF already covers this pair
+      if (irfs[source]?.[target]?.length) continue
+
+      // Try every other canvas node as a 1-hop intermediary
+      for (const mid of canvasTickers) {
+        if (mid === source || mid === target) continue
+
+        const sourceToMid = irfs[source]?.[mid]
+        const midToTarget = irfs[mid]?.[target]
+        if (!sourceToMid?.length || !midToTarget?.length) continue
+
+        // Scalar effect of source shock on mid (sum of IRF × shock)
+        const midEffect = sourceToMid.reduce((s, v) => s + v, 0) * shockPct
+
+        // Propagate mid's effect to target
+        let cumulative = 0
+        for (let h = 0; h < maxHorizon; h++) {
+          cumulative += (midToTarget[h] ?? 0) * midEffect * INDIRECT_DECAY
+          impacts[target][h] += cumulative
+        }
+      }
+    }
   }
 
   return { impacts }

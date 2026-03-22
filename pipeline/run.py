@@ -6,6 +6,7 @@ Usage:
   python run.py --step prices    # only fetch prices
   python run.py --step returns   # only compute returns
   python run.py --step var       # only compute VAR / IRFs (resumable)
+  python run.py --step diagnose  # report missing influence_edges pairs
 """
 
 import argparse
@@ -19,6 +20,7 @@ STEPS = {
     "prices": fetch_prices.run,
     "returns": compute_returns.run,
     "var": compute_var.run,
+    "diagnose": compute_var.diagnose,
 }
 
 
