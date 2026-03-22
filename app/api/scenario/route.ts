@@ -40,7 +40,7 @@ Return only valid JSON, no markdown.`,
       },
     })
 
-    const text = (response as any).candidates?.[0]?.content?.parts?.[0]?.text ?? response.text?.()
+    const text = (response as any).candidates?.[0]?.content?.parts?.[0]?.text ?? (response as any).text
     if (!text) return NextResponse.json({ error: "Empty response from model" }, { status: 500 })
 
     const result = JSON.parse(text)
