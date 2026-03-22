@@ -53,7 +53,7 @@ export default function SimulationControls({
               disabled={loading}
               className="flex items-center gap-1.5 px-4 py-1.5 btn-primary text-xs font-medium rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {loading ? "Loading IRFs\u2026" : "\u25B6 Run Simulation"}
+              {loading ? "Loading\u2026" : "\u25B6 Run Simulation"}
             </button>
           ) : null}
 

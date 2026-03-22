@@ -7,9 +7,10 @@ import { SECTOR_COLORS, DEFAULT_SECTOR_COLOR } from "./constants"
 interface Props {
   companies: Company[]
   addedTickers: Set<string>
+  onImportClick: () => void
 }
 
-export default function CompanySidebar({ companies, addedTickers }: Props) {
+export default function CompanySidebar({ companies, addedTickers, onImportClick }: Props) {
   const [search, setSearch] = useState("")
 
   const filtered = search.trim()
@@ -104,8 +105,19 @@ export default function CompanySidebar({ companies, addedTickers }: Props) {
         )}
       </div>
 
-      <div className="px-4 py-3 border-t text-xs" style={{ borderColor: 'var(--glass-border)', color: 'var(--text-muted)' }}>
-        {filtered.length} companies · drag to add
+      <div className="px-4 py-3 border-t flex flex-col gap-2" style={{ borderColor: 'var(--glass-border)' }}>
+        <button
+          onClick={onImportClick}
+          className="w-full btn-ghost text-xs rounded-lg px-3 py-2 flex items-center justify-center gap-2"
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+          Import from spreadsheet
+        </button>
+        <p className="text-xs text-center" style={{ color: 'var(--text-muted)' }}>
+          {filtered.length} companies · drag to add
+        </p>
       </div>
     </aside>
   )

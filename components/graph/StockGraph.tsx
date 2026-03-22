@@ -11,6 +11,7 @@ import SimulationModal from "@/components/simulation/SimulationModal"
 import RiskModal from "@/components/simulation/RiskModal"
 import { useSimulation } from "@/components/simulation/useSimulation"
 import ScenarioPanel from "./ScenarioPanel"
+import ImportModal from "./ImportModal"
 import type { PortfolioEntry } from "./NodeDetailPanel"
 import type { CanvasNode } from "./SandboxCanvas"
 
@@ -32,6 +33,7 @@ export default function StockGraph() {
   const [showSimModal, setShowSimModal] = useState(false)
   const [showWeights, setShowWeights] = useState(false)
   const [showRiskModal, setShowRiskModal] = useState(false)
+  const [showImportModal, setShowImportModal] = useState(false)
   const [priceHistory, setPriceHistory] = useState<PricePoint[]>([])
 
   const companyMap = useRef<Map<string, Company>>(new Map())
@@ -123,6 +125,30 @@ export default function StockGraph() {
     setSelectedTicker(null)
   }
 
+  function handleImport(rows: Array<{ ticker: string; shares: string; costBasis: string }>) {
+    const n = rows.length
+    const cx = 400, cy = 300
+    // Keep arc distance between adjacent nodes constant (~80px) regardless of count
+    const r = Math.max(120, (n * 80) / (2 * Math.PI))
+    const newNodes: CanvasNode[] = []
+    const newPortfolio: Record<string, PortfolioEntry> = {}
+    rows.forEach(({ ticker, shares, costBasis }, i) => {
+      if (addedTickers.has(ticker)) return
+      const company = companyMap.current.get(ticker)
+      if (!company) return
+      const angle = (2 * Math.PI * i) / n - Math.PI / 2
+      newNodes.push({
+        ticker,
+        sector: company.sector,
+        name: company.name,
+        position: { x: cx + r * Math.cos(angle), y: cy + r * Math.sin(angle) },
+      })
+      newPortfolio[ticker] = { shares, costBasis, purchaseDate: "", notes: "" }
+    })
+    setCanvasNodes((prev) => [...prev, ...newNodes])
+    setPortfolio((prev) => ({ ...prev, ...newPortfolio }))
+  }
+
   function handleRemoveNode(ticker: string) {
     setCanvasNodes((prev) => prev.filter((n) => n.ticker !== ticker))
     setPortfolio((prev) => { const next = { ...prev }; delete next[ticker]; return next })
@@ -144,7 +170,7 @@ export default function StockGraph() {
 
   return (
     <div className="flex h-full overflow-hidden" style={{ background: 'var(--base)' }}>
-      <CompanySidebar companies={companies} addedTickers={addedTickers} />
+      <CompanySidebar companies={companies} addedTickers={addedTickers} onImportClick={() => setShowImportModal(true)} />
 
       {/* Left separator */}
       <div className="panel-separator" />
@@ -221,6 +247,13 @@ export default function StockGraph() {
         portfolio={portfolio}
         latestPrices={latestPrices}
         edges={edges}
+      />
+
+      <ImportModal
+        isOpen={showImportModal}
+        onClose={() => setShowImportModal(false)}
+        companies={companies}
+        onImport={handleImport}
       />
     </div>
   )
