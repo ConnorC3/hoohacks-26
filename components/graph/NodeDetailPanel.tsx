@@ -623,7 +623,7 @@ function SimulateTab({
           <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>Shock applied</p>
           <p className="text-lg font-bold font-mono"
             style={{ color: shock < 0 ? 'var(--accent-red)' : 'var(--accent-green)' }}>
-            {shock > 0 ? "+" : ""}{Math.round(shock)}%
+            {shock > 0 ? "+" : ""}{shock}%
           </p>
           <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
             Press Run Simulation above to propagate this shock.

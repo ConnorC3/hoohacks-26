@@ -15,6 +15,13 @@ interface Props {
   // Display toggles
   showWeights?: boolean
   onToggleWeights?: () => void
+  // Risk analysis
+  onRiskAnalysis?: () => void
+  hasPortfolio?: boolean
+  riskModalOpen?: boolean
+  // Canvas
+  onClearCanvas?: () => void
+  canvasEmpty?: boolean
 }
 
 export default function SimulationControls({
@@ -27,6 +34,11 @@ export default function SimulationControls({
   onViewResults,
   showWeights,
   onToggleWeights,
+  onRiskAnalysis,
+  hasPortfolio,
+  riskModalOpen,
+  onClearCanvas,
+  canvasEmpty,
 }: Props) {
   return (
     <div className="flex flex-col gap-2 px-4 py-3 glass-panel border-b"
@@ -67,6 +79,41 @@ export default function SimulationControls({
             }}
           >
             Weights
+          </button>
+        )}
+
+        {/* Risk analysis button */}
+        {onRiskAnalysis && (
+          <button
+            onClick={onRiskAnalysis}
+            disabled={!hasPortfolio}
+            className="px-2 py-1 text-xs rounded-md transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
+            style={{
+              background: riskModalOpen ? 'var(--accent-purple)' : 'rgba(255,255,255,0.04)',
+              color: riskModalOpen ? 'white' : 'var(--text-secondary)',
+              border: `1px solid ${riskModalOpen ? 'var(--accent-purple)' : 'var(--glass-border)'}`,
+              boxShadow: riskModalOpen ? '0 0 10px rgba(123,97,255,0.4)' : 'none',
+            }}
+            title={hasPortfolio ? "Analyse portfolio risk" : "Enter shares in the Investment tab first"}
+          >
+            Risk Analysis
+          </button>
+        )}
+
+        {/* Clear canvas button */}
+        {onClearCanvas && (
+          <button
+            onClick={onClearCanvas}
+            disabled={canvasEmpty}
+            className="px-2 py-1 text-xs rounded-md transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
+            style={{
+              background: 'rgba(255,255,255,0.04)',
+              color: 'var(--text-secondary)',
+              border: '1px solid var(--glass-border)',
+            }}
+            title={canvasEmpty ? "Canvas is already empty" : "Remove all nodes from canvas"}
+          >
+            Clear Canvas
           </button>
         )}
 
