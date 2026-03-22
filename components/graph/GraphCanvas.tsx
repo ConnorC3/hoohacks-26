@@ -2,7 +2,7 @@
 
 import { useRef, useEffect } from "react"
 import CytoscapeComponent from "react-cytoscapejs"
-import type { Core, ElementDefinition, StylesheetCSS as Stylesheet } from "cytoscape"
+import type { Core, ElementDefinition } from "cytoscape"
 import type { GraphNode, GraphEdge } from "@/lib/supabase/types"
 import { SECTOR_COLORS, DEFAULT_SECTOR_COLOR } from "./constants"
 
@@ -35,7 +35,7 @@ function buildElements(nodes: GraphNode[], edges: GraphEdge[]): ElementDefinitio
   return [...nodeEls, ...edgeEls]
 }
 
-const STYLESHEET: Stylesheet[] = [
+const STYLESHEET = [
   {
     selector: "node",
     style: {

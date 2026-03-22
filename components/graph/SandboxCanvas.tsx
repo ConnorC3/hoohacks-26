@@ -2,7 +2,7 @@
 
 import { useRef, useEffect, useState, useMemo } from "react"
 import CytoscapeComponent from "react-cytoscapejs"
-import type { Core, ElementDefinition, StylesheetCSS as Stylesheet } from "cytoscape"
+import type { Core, ElementDefinition } from "cytoscape"
 import type { GraphEdge } from "@/lib/supabase/types"
 import { SECTOR_COLORS, DEFAULT_SECTOR_COLOR } from "./constants"
 
@@ -44,7 +44,7 @@ export default function SandboxCanvas({
   const cyRef = useRef<Core | null>(null)
   const [isDragOver, setIsDragOver] = useState(false)
 
-  const stylesheet = useMemo((): Stylesheet[] => [
+  const stylesheet = useMemo(() => [
     {
       selector: "node",
       style: {
