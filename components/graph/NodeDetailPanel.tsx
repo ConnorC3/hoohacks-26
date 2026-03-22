@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import type { Company } from "@/lib/supabase/types"
 import { SECTOR_COLORS, DEFAULT_SECTOR_COLOR } from "./constants"
 
@@ -9,6 +9,11 @@ export interface PortfolioEntry {
   costBasis: string
   purchaseDate: string
   notes: string
+}
+
+interface PricePoint {
+  date: string
+  price: number
 }
 
 interface Props {
@@ -23,6 +28,8 @@ interface Props {
   onShockChange: (pct: number | null) => void
   simulatedImpact: number | null // current impact at active horizon
   simulationActive: boolean
+  // Price history for chart
+  priceHistory?: PricePoint[]
 }
 
 type Tab = "overview" | "investment" | "simulate"
@@ -50,6 +57,7 @@ export default function NodeDetailPanel({
   onShockChange,
   simulatedImpact,
   simulationActive,
+  priceHistory = [],
 }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>("overview")
   const sectorColor = SECTOR_COLORS[company?.sector ?? ""] ?? DEFAULT_SECTOR_COLOR
@@ -147,6 +155,7 @@ export default function NodeDetailPanel({
             simulatedImpact={simulatedImpact}
             simulationActive={simulationActive}
             latestPrice={latestPrice}
+            priceHistory={priceHistory}
           />
         )}
       </div>
@@ -390,6 +399,173 @@ function SummaryRow({
 }
 
 // ---------------------------------------------------------------------------
+// Price Chart — SVG sparkline with real historical data + shock projection
+// ---------------------------------------------------------------------------
+
+function PriceChart({
+  priceHistory,
+  latestPrice,
+  simulatedImpact,
+  simulationActive,
+}: {
+  priceHistory: PricePoint[]
+  latestPrice: number | null
+  simulatedImpact: number | null
+  simulationActive: boolean
+}) {
+  const chartData = useMemo(() => {
+    if (priceHistory.length === 0 || latestPrice === null) return null
+
+    // Use last 60 trading days of data
+    const recentPrices = priceHistory.slice(-60)
+    const prices = recentPrices.map((p) => p.price)
+    const dates = recentPrices.map((p) => p.date)
+
+    const postShockPrice = simulationActive && simulatedImpact !== null
+      ? latestPrice * (1 + simulatedImpact)
+      : null
+
+    // Compute Y range including post-shock price
+    const allValues = [...prices]
+    if (postShockPrice !== null) allValues.push(postShockPrice)
+    const minPrice = Math.min(...allValues)
+    const maxPrice = Math.max(...allValues)
+    const yPadding = (maxPrice - minPrice) * 0.1 || 1
+    const yMin = minPrice - yPadding
+    const yMax = maxPrice + yPadding
+
+    return { prices, dates, postShockPrice, yMin, yMax }
+  }, [priceHistory, latestPrice, simulatedImpact, simulationActive])
+
+  if (!chartData) return null
+
+  const { prices, dates, postShockPrice, yMin, yMax } = chartData
+  const W = 260
+  const H = 140
+  const PAD_L = 40
+  const PAD_R = postShockPrice !== null ? 30 : 8
+  const PAD_T = 12
+  const PAD_B = 20
+  const plotW = W - PAD_L - PAD_R
+  const plotH = H - PAD_T - PAD_B
+
+  const toX = (i: number) => PAD_L + (i / (prices.length - 1)) * plotW
+  const toY = (v: number) => PAD_T + plotH - ((v - yMin) / (yMax - yMin)) * plotH
+
+  // Build the historical price polyline
+  const points = prices.map((p, i) => `${toX(i).toFixed(1)},${toY(p).toFixed(1)}`).join(" ")
+
+  // Y-axis labels (4 ticks)
+  const yTicks = Array.from({ length: 4 }, (_, i) => {
+    const val = yMin + ((yMax - yMin) * i) / 3
+    return { val, y: toY(val) }
+  })
+
+  // X-axis labels (first, middle, last)
+  const xLabels = [
+    { idx: 0, label: dates[0]?.slice(5) ?? "" },
+    { idx: Math.floor(dates.length / 2), label: dates[Math.floor(dates.length / 2)]?.slice(5) ?? "" },
+    { idx: dates.length - 1, label: dates[dates.length - 1]?.slice(5) ?? "" },
+  ]
+
+  const lastX = toX(prices.length - 1)
+  const lastY = toY(prices[prices.length - 1])
+  const shockX = lastX + 20
+  const shockY = postShockPrice !== null ? toY(postShockPrice) : lastY
+  const isPositive = postShockPrice !== null && postShockPrice >= prices[prices.length - 1]
+
+  return (
+    <div className="rounded-xl px-3 py-3" style={{
+      background: 'rgba(255,255,255,0.03)',
+      border: '1px solid var(--glass-border)',
+    }}>
+      <p className="text-xs uppercase tracking-wider mb-2" style={{ color: 'var(--text-muted)' }}>
+        Price History (60d){postShockPrice !== null ? " + Shock" : ""}
+      </p>
+      <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: 'block' }}>
+        {/* Grid lines */}
+        {yTicks.map((t, i) => (
+          <g key={i}>
+            <line x1={PAD_L} x2={W - PAD_R} y1={t.y} y2={t.y}
+              stroke="rgba(255,255,255,0.04)" strokeWidth="0.5" />
+            <text x={PAD_L - 4} y={t.y + 3} textAnchor="end"
+              fill="rgba(255,255,255,0.3)" fontSize="7" fontFamily="monospace">
+              ${t.val.toFixed(0)}
+            </text>
+          </g>
+        ))}
+
+        {/* X-axis labels */}
+        {xLabels.map((xl, i) => (
+          <text key={i} x={toX(xl.idx)} y={H - 4} textAnchor="middle"
+            fill="rgba(255,255,255,0.3)" fontSize="7" fontFamily="monospace">
+            {xl.label}
+          </text>
+        ))}
+
+        {/* Historical price line */}
+        <polyline
+          points={points}
+          fill="none"
+          stroke="var(--accent-purple)"
+          strokeWidth="1.5"
+          strokeLinejoin="round"
+          strokeLinecap="round"
+        />
+
+        {/* Area fill under line */}
+        <polygon
+          points={`${toX(0).toFixed(1)},${toY(yMin).toFixed(1)} ${points} ${lastX.toFixed(1)},${toY(yMin).toFixed(1)}`}
+          fill="url(#areaGrad)"
+          opacity="0.3"
+        />
+
+        {/* Gradient definition */}
+        <defs>
+          <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="var(--accent-purple)" stopOpacity="0.3" />
+            <stop offset="100%" stopColor="var(--accent-purple)" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+
+        {/* Latest price dot */}
+        <circle cx={lastX} cy={lastY} r="3" fill="var(--accent-purple)" />
+
+        {/* Post-shock projection */}
+        {postShockPrice !== null && (
+          <>
+            {/* Shock line */}
+            <line x1={lastX} y1={lastY} x2={shockX} y2={shockY}
+              stroke={isPositive ? "var(--accent-green)" : "var(--accent-red)"}
+              strokeWidth="1.5"
+              strokeDasharray="3,2"
+            />
+
+            {/* Shock dot */}
+            <circle cx={shockX} cy={shockY} r="3.5"
+              fill={isPositive ? "var(--accent-green)" : "var(--accent-red)"}
+            />
+            <circle cx={shockX} cy={shockY} r="6"
+              fill="none"
+              stroke={isPositive ? "var(--accent-green)" : "var(--accent-red)"}
+              strokeWidth="0.5"
+              opacity="0.5"
+            />
+
+            {/* Post-shock price label */}
+            <text x={shockX} y={shockY - 8} textAnchor="middle"
+              fill={isPositive ? "var(--accent-green)" : "var(--accent-red)"}
+              fontSize="8" fontFamily="monospace" fontWeight="bold">
+              ${postShockPrice.toFixed(2)}
+            </text>
+          </>
+        )}
+      </svg>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Simulate tab
 // ---------------------------------------------------------------------------
 
@@ -400,6 +576,7 @@ function SimulateTab({
   simulatedImpact,
   simulationActive,
   latestPrice,
+  priceHistory,
 }: {
   ticker: string
   shock: number | null
@@ -407,6 +584,7 @@ function SimulateTab({
   simulatedImpact: number | null
   simulationActive: boolean
   latestPrice: number | null
+  priceHistory: PricePoint[]
 }) {
   const impactPct = simulatedImpact !== null ? simulatedImpact * 100 : null
   const impliedPrice =
@@ -453,13 +631,23 @@ function SimulateTab({
         </div>
       )}
 
+      {/* Price chart — always visible when we have data */}
+      <PriceChart
+        priceHistory={priceHistory}
+        latestPrice={latestPrice}
+        simulatedImpact={simulatedImpact}
+        simulationActive={simulationActive}
+      />
+
       {simulationActive && impactPct !== null && (
         <div className="rounded-xl px-4 py-4 flex flex-col gap-2.5"
           style={{
             background: 'rgba(255,255,255,0.03)',
             border: '1px solid var(--glass-border)',
           }}>
-          <p className="text-xs uppercase tracking-wider mb-1" style={{ color: 'var(--text-muted)' }}>Simulated Impact</p>
+          <p className="text-xs uppercase tracking-wider mb-1" style={{ color: 'var(--text-muted)' }}>
+            Simulated Impact
+          </p>
           {latestPrice !== null && (
             <SummaryRow label="Before" value={formatCurrency(latestPrice)} />
           )}

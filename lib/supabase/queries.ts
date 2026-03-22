@@ -109,13 +109,14 @@ export async function getGraphEdges(filters?: {
   const { data, error } = await query
   if (error) throw error
 
-  // Aggregate per (from, to) pair in JS — sum |coefficient|, track min p_value
+  // Aggregate per (from, to) pair in JS — signed sum + abs sum, track min p_value
   const map = new Map<string, GraphEdge>()
   for (const row of data) {
     const key = `${row.from_ticker}__${row.to_ticker}`
     const existing = map.get(key)
     if (existing) {
       existing.total_weight += Math.abs(row.coefficient)
+      existing.net_weight += row.coefficient
       if (row.p_value !== null) {
         existing.min_p_value =
           existing.min_p_value === null
@@ -127,6 +128,7 @@ export async function getGraphEdges(filters?: {
         from_ticker: row.from_ticker,
         to_ticker: row.to_ticker,
         total_weight: Math.abs(row.coefficient),
+        net_weight: row.coefficient,
         min_p_value: row.p_value,
       })
     }
@@ -162,6 +164,7 @@ export async function getEdgesBetween(tickers: string[]): Promise<GraphEdge[]> {
     const existing = map.get(key)
     if (existing) {
       existing.total_weight += Math.abs(row.coefficient)
+      existing.net_weight += row.coefficient
       if (row.p_value !== null) {
         existing.min_p_value =
           existing.min_p_value === null
@@ -173,6 +176,7 @@ export async function getEdgesBetween(tickers: string[]): Promise<GraphEdge[]> {
         from_ticker: row.from_ticker,
         to_ticker: row.to_ticker,
         total_weight: Math.abs(row.coefficient),
+        net_weight: row.coefficient,
         min_p_value: row.p_value,
       })
     }
@@ -204,6 +208,34 @@ export async function getImpulseResponses(
   for (const row of data) {
     if (!result[row.to_ticker]) result[row.to_ticker] = []
     result[row.to_ticker][row.horizon - 1] = row.irf_value
+  }
+  return result
+}
+
+/**
+ * Fetch all pre-computed IRF values TARGETING a given ticker (from any source).
+ * Returns a map: from_ticker → irf_value[] (indexed by horizon 1..N)
+ *
+ * Used by the simulation engine to allow all ~503 nodes to serve as
+ * intermediaries when propagating shocks to canvas targets.
+ */
+export async function getIncomingImpulseResponses(
+  toTicker: string
+): Promise<Record<string, number[]>> {
+  // Up to 503 sources × 20 horizons ≈ 10k rows
+  const { data, error } = await supabase
+    .from("impulse_responses")
+    .select("from_ticker, horizon, irf_value")
+    .eq("to_ticker", toTicker)
+    .order("horizon")
+    .limit(15000)
+
+  if (error) throw error
+
+  const result: Record<string, number[]> = {}
+  for (const row of data) {
+    if (!result[row.from_ticker]) result[row.from_ticker] = []
+    result[row.from_ticker][row.horizon - 1] = row.irf_value
   }
   return result
 }

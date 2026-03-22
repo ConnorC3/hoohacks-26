@@ -89,17 +89,26 @@ export default function SandboxCanvas({
       selector: "edge",
       style: {
         width: (ele: any) => Math.min(Math.max(ele.data("weight") * 5, 0.8), 4),
-        "line-color": "#2a2a3f",
-        "target-arrow-color": "#2a2a3f",
+        "line-color": (ele: any) =>
+          ele.data("edgeSign") === "positive" ? "rgba(0, 200, 120, 0.55)"
+          : ele.data("edgeSign") === "negative" ? "rgba(255, 70, 100, 0.55)"
+          : "#2a2a3f",
+        "target-arrow-color": (ele: any) =>
+          ele.data("edgeSign") === "positive" ? "rgba(0, 200, 120, 0.55)"
+          : ele.data("edgeSign") === "negative" ? "rgba(255, 70, 100, 0.55)"
+          : "#2a2a3f",
         "target-arrow-shape": "triangle",
         "arrow-scale": 0.8,
         "curve-style": "bezier",
-        opacity: 0.5,
-        "line-style": "solid",
+        opacity: (ele: any) => ele.data("weight") === 0 ? 0.15 : 0.5,
+        "line-style": (ele: any) => ele.data("weight") === 0 ? "dashed" : "solid",
         label: showWeights ? "data(weightLabel)" : "",
         "font-size": 9,
         "font-family": "var(--font-geist-mono), monospace",
-        color: "rgba(255,255,255,0.65)",
+        color: (ele: any) =>
+          ele.data("edgeSign") === "positive" ? "rgba(0, 255, 135, 0.85)"
+          : ele.data("edgeSign") === "negative" ? "rgba(255, 100, 130, 0.85)"
+          : "rgba(255,255,255,0.65)",
         "text-background-color": "#0d0d18",
         "text-background-opacity": showWeights ? 0.85 : 0,
         "text-background-padding": "2px",
@@ -140,8 +149,9 @@ export default function SandboxCanvas({
           id: `${e.from_ticker}__${e.to_ticker}`,
           source: e.from_ticker,
           target: e.to_ticker,
-          weight: e.total_weight,
-          weightLabel: e.total_weight.toFixed(3),
+          weight: Math.abs(e.net_weight),
+          weightLabel: (e.net_weight >= 0 ? "+" : "") + e.net_weight.toFixed(3),
+          edgeSign: e.net_weight >= 0 ? "positive" : "negative",
         },
       })),
   ]

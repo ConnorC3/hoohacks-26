@@ -51,8 +51,10 @@ export interface GraphNode extends Company {
 export interface GraphEdge {
   from_ticker: string
   to_ticker: string
-  // Sum of absolute coefficients across all lags — used as display weight
+  // Sum of absolute coefficients across all lags — used for edge thickness
   total_weight: number
+  // Signed sum of coefficients across all lags — used for display label & color
+  net_weight: number
   // Minimum p-value across lags — used for significance filtering
   min_p_value: number | null
 }

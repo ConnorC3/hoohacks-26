@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react"
 import dynamic from "next/dynamic"
 import type { Company, GraphEdge } from "@/lib/supabase/types"
-import { getAllCompanies, getLatestPrices, getEdgesBetween } from "@/lib/supabase/queries"
+import { getAllCompanies, getLatestPrices, getEdgesBetween, getPriceHistory } from "@/lib/supabase/queries"
 import CompanySidebar from "./CompanySidebar"
 import NodeDetailPanel from "./NodeDetailPanel"
 import SimulationControls from "@/components/simulation/SimulationControls"
@@ -15,6 +15,11 @@ import type { CanvasNode } from "./SandboxCanvas"
 
 const SandboxCanvas = dynamic(() => import("./SandboxCanvas"), { ssr: false })
 
+interface PricePoint {
+  date: string
+  price: number
+}
+
 export default function StockGraph() {
   const [companies, setCompanies] = useState<Company[]>([])
   const [latestPrices, setLatestPrices] = useState<Record<string, number>>({})
@@ -25,6 +30,7 @@ export default function StockGraph() {
   const [error, setError] = useState<string | null>(null)
   const [showSimModal, setShowSimModal] = useState(false)
   const [showWeights, setShowWeights] = useState(false)
+  const [priceHistory, setPriceHistory] = useState<PricePoint[]>([])
 
   const companyMap = useRef<Map<string, Company>>(new Map())
   const addedTickers = new Set(canvasNodes.map((n) => n.ticker))
@@ -42,14 +48,40 @@ export default function StockGraph() {
       .catch((e) => setError(e.message))
   }, [])
 
-  // Refresh edges whenever canvas nodes change
+  // Refresh edges whenever canvas nodes change — fill missing pairs with weight 0
   useEffect(() => {
     const tickers = canvasNodes.map((n) => n.ticker)
     if (tickers.length < 2) { setEdges([]); return }
     getEdgesBetween(tickers)
-      .then(setEdges)
+      .then((dbEdges) => {
+        const edgeSet = new Set(dbEdges.map((e) => `${e.from_ticker}__${e.to_ticker}`))
+        const zeroEdges: GraphEdge[] = []
+        for (const a of tickers) {
+          for (const b of tickers) {
+            if (a === b) continue
+            if (!edgeSet.has(`${a}__${b}`)) {
+              zeroEdges.push({ from_ticker: a, to_ticker: b, total_weight: 0, net_weight: 0, min_p_value: null })
+            }
+          }
+        }
+        setEdges([...dbEdges, ...zeroEdges])
+      })
       .catch((e) => setError(e.message))
   }, [canvasNodes])
+
+  // Fetch price history when a ticker is selected
+  useEffect(() => {
+    if (!selectedTicker) { setPriceHistory([]); return }
+    getPriceHistory(selectedTicker)
+      .then((rows) => {
+        setPriceHistory(
+          rows
+            .filter((r) => r.adj_close !== null)
+            .map((r) => ({ date: r.date, price: r.adj_close as number }))
+        )
+      })
+      .catch(() => setPriceHistory([]))
+  }, [selectedTicker])
 
   function handleDrop(ticker: string, position: { x: number; y: number }) {
     const company = companyMap.current.get(ticker)
@@ -115,18 +147,10 @@ export default function StockGraph() {
         />
         <SimulationControls
           status={sim.status}
-          currentHorizon={sim.currentHorizon}
-          maxHorizon={sim.maxHorizon}
-          speed={sim.speed}
-          runToDate={sim.runToDate}
           loading={sim.loading}
           error={sim.error}
           onPlay={() => sim.play()}
-          onPause={sim.pause}
-          onResume={sim.resume}
           onReset={sim.reset}
-          onSpeedChange={sim.setSpeed}
-          onRunToDateChange={sim.setRunToDate}
           impactedCount={Object.keys(sim.currentImpacts).filter((t) => Math.abs(sim.currentImpacts[t]) > 0.001).length}
           onViewResults={() => setShowSimModal(true)}
           showWeights={showWeights}
@@ -162,6 +186,7 @@ export default function StockGraph() {
         onShockChange={(pct) => { if (selectedTicker) sim.setShock(selectedTicker, pct) }}
         simulatedImpact={selectedTicker && simulationActive ? sim.currentImpacts[selectedTicker] ?? null : null}
         simulationActive={simulationActive}
+        priceHistory={priceHistory}
       />
 
       <SimulationModal

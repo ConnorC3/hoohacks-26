@@ -1,20 +1,10 @@
 "use client"
 
-import { useState, useEffect, useRef, useCallback } from "react"
-import { runSimulation, dateToHorizon } from "@/lib/simulation/engine"
-import { getImpulseResponses } from "@/lib/supabase/queries"
+import { useState, useCallback } from "react"
+import { runSimulation } from "@/lib/simulation/engine"
+import { getImpulseResponses, getIncomingImpulseResponses } from "@/lib/supabase/queries"
 
-export type SimulationStatus = "idle" | "running" | "paused" | "complete"
-
-export const SPEED_OPTIONS = [
-  { label: "0.5×", ms: 2000 },
-  { label: "1×",   ms: 1000 },
-  { label: "2×",   ms: 500  },
-  { label: "5×",   ms: 200  },
-  { label: "10×",  ms: 100  },
-]
-
-const MAX_HORIZON = 20
+export type SimulationStatus = "idle" | "complete"
 
 export interface UseSimulationReturn {
   // Shock inputs — set per ticker
@@ -23,66 +13,28 @@ export interface UseSimulationReturn {
 
   // Playback state
   status: SimulationStatus
-  currentHorizon: number
-  maxHorizon: number
-  speed: number
-  setSpeed: (ms: number) => void
-  runToDate: string
-  setRunToDate: (date: string) => void
 
-  // Current impact at currentHorizon for each canvas ticker
+  // Final impact for each canvas ticker (instant snapshot)
   currentImpacts: Record<string, number>
 
   // Controls
   play: (overrideShocks?: Record<string, number>) => Promise<void>
-  pause: () => void
-  resume: () => void
   reset: () => void
 
   loading: boolean
   error: string | null
 }
 
+// We compute the full 20-horizon IRF but only display the final cumulative result.
+// This represents the near-instant repricing (~2s) that occurs via EMH + HFT.
+const COMPUTE_HORIZON = 20
+
 export function useSimulation(canvasTickers: string[]): UseSimulationReturn {
   const [shocks, setShocks] = useState<Record<string, number>>({})
   const [status, setStatus] = useState<SimulationStatus>("idle")
-  const [currentHorizon, setCurrentHorizon] = useState(0)
-  const [speed, setSpeed] = useState(SPEED_OPTIONS[1].ms)
-  const [runToDate, setRunToDate] = useState("")
-  const [allImpacts, setAllImpacts] = useState<Record<string, number[]>>({})
+  const [currentImpacts, setCurrentImpacts] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const horizonLimit = runToDate ? dateToHorizon(runToDate, MAX_HORIZON) : MAX_HORIZON
-
-  // Derived: current impacts at the active horizon
-  const currentImpacts: Record<string, number> = {}
-  for (const ticker of canvasTickers) {
-    currentImpacts[ticker] = allImpacts[ticker]?.[currentHorizon] ?? 0
-  }
-
-  // Timer — advances horizon while running
-  useEffect(() => {
-    if (status !== "running") {
-      if (timerRef.current) clearInterval(timerRef.current)
-      return
-    }
-
-    timerRef.current = setInterval(() => {
-      setCurrentHorizon((h) => {
-        if (h >= horizonLimit - 1) {
-          setStatus("complete")
-          return h
-        }
-        return h + 1
-      })
-    }, speed)
-
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current)
-    }
-  }, [status, speed, horizonLimit])
 
   const play = useCallback(async (overrideShocks?: Record<string, number>) => {
     const effectiveShocks = overrideShocks ?? shocks
@@ -92,37 +44,54 @@ export function useSimulation(canvasTickers: string[]): UseSimulationReturn {
       return
     }
 
-    // Reset to idle so stale impacts don't show during the IRF fetch
     setStatus("idle")
-    setAllImpacts({})
-    setCurrentHorizon(0)
+    setCurrentImpacts({})
     setLoading(true)
     setError(null)
 
     try {
-      // Fetch IRFs for all canvas tickers so indirect paths can be followed
+      // Fetch outgoing IRFs (from each canvas/shocked ticker to all ~503 targets)
+      // AND incoming IRFs (from all ~503 sources to each canvas ticker).
+      // This allows every node in the market to serve as an intermediary.
       const irfs: Record<string, Record<string, number[]>> = {}
-      await Promise.all(
-        canvasTickers.map(async (ticker) => {
+      const incomingIrfs: Record<string, Record<string, number[]>> = {}
+
+      // Ensure shocked tickers are included in outgoing IRF fetch
+      const outgoingSet = new Set([...canvasTickers, ...shockedTickers])
+
+      await Promise.all([
+        // Outgoing IRFs: each canvas/shocked ticker → all ~503 targets
+        ...Array.from(outgoingSet).map(async (ticker) => {
           irfs[ticker] = await getImpulseResponses(ticker)
-          console.log(`[sim] IRF for ${ticker}:`, Object.keys(irfs[ticker]).length, "targets")
-        })
-      )
+          console.log(`[sim] outgoing IRF for ${ticker}:`, Object.keys(irfs[ticker]).length, "targets")
+        }),
+        // Incoming IRFs: all ~503 sources → each canvas ticker
+        ...canvasTickers.map(async (ticker) => {
+          incomingIrfs[ticker] = await getIncomingImpulseResponses(ticker)
+          console.log(`[sim] incoming IRF for ${ticker}:`, Object.keys(incomingIrfs[ticker]).length, "sources")
+        }),
+      ])
 
       const result = runSimulation({
         shocks: effectiveShocks,
         irfs,
+        incomingIrfs,
         canvasTickers,
-        maxHorizon: MAX_HORIZON,
+        maxHorizon: COMPUTE_HORIZON,
       })
 
-      console.log("[sim] impacts computed:", Object.fromEntries(
-        Object.entries(result.impacts).map(([t, v]) => [t, v[0].toFixed(4)])
+      // Use the final horizon as the instant repricing result
+      const finalImpacts: Record<string, number> = {}
+      for (const [ticker, timeline] of Object.entries(result.impacts)) {
+        finalImpacts[ticker] = timeline[timeline.length - 1] ?? 0
+      }
+
+      console.log("[sim] final impacts:", Object.fromEntries(
+        Object.entries(finalImpacts).map(([t, v]) => [t, v.toFixed(4)])
       ))
 
-      setAllImpacts(result.impacts)
-      setCurrentHorizon(0)
-      setStatus("running")
+      setCurrentImpacts(finalImpacts)
+      setStatus("complete")
     } catch (e: any) {
       console.error("[sim] play() failed:", e)
       setError(String(e?.message ?? e))
@@ -131,13 +100,9 @@ export function useSimulation(canvasTickers: string[]): UseSimulationReturn {
     }
   }, [shocks, canvasTickers])
 
-  const pause = useCallback(() => setStatus("paused"), [])
-  const resume = useCallback(() => setStatus("running"), [])
-
   const reset = useCallback(() => {
     setStatus("idle")
-    setCurrentHorizon(0)
-    setAllImpacts({})
+    setCurrentImpacts({})
     setError(null)
   }, [])
 
@@ -157,16 +122,8 @@ export function useSimulation(canvasTickers: string[]): UseSimulationReturn {
     shocks,
     setShock,
     status,
-    currentHorizon,
-    maxHorizon: horizonLimit,
-    speed,
-    setSpeed,
-    runToDate,
-    setRunToDate,
     currentImpacts,
     play,
-    pause,
-    resume,
     reset,
     loading,
     error,
