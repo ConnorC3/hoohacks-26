@@ -69,8 +69,11 @@ export function runSimulation(input: SimulationInput): SimulationOutput {
   for (const [source, shockPct] of Object.entries(shocks)) {
     for (const target of canvasTickers) {
       if (source === target) continue
-      // Skip if a direct IRF already covers this pair
-      if (irfs[source]?.[target]?.length) continue
+      // Skip if a non-zero direct IRF already covers this pair.
+      // Zero IRFs (stored for k_ar=0 pairs) don't count — indirect paths still apply.
+      const directIrfs = irfs[source]?.[target]
+      const hasDirectImpact = directIrfs?.some((v) => Math.abs(v) > 1e-10)
+      if (hasDirectImpact) continue
 
       // Try every other canvas node as a 1-hop intermediary
       for (const mid of canvasTickers) {

@@ -78,14 +78,18 @@ def get_all_tickers() -> list[str]:
 
 
 def get_completed_pairs() -> set[tuple[str, str]]:
-    """Return set of (from_ticker, to_ticker) already in influence_edges."""
+    """Return set of (from_ticker, to_ticker) already in impulse_responses.
+
+    We use impulse_responses (not influence_edges) because k_ar=0 pairs write
+    zero IRF rows but no edge rows — their completion is only recorded here.
+    """
     client = get_client()
     rows = []
     page_size = 1000
     offset = 0
     while True:
         resp = (
-            client.table("influence_edges")
+            client.table("impulse_responses")
             .select("from_ticker, to_ticker")
             .range(offset, offset + page_size - 1)
             .execute()
@@ -132,9 +136,20 @@ def fit_pair(
         now = datetime.datetime.utcnow().isoformat()
         p = result.k_ar  # selected lag order
 
-        # AIC chose a constant-only model — no predictive VAR relationship exists
+        # AIC chose a constant-only model — no VAR relationship exists.
+        # Write all-zero IRFs so the DB is complete (absence = not yet computed).
         if p == 0:
-            return None, "no_var_relationship (k_ar=0)"
+            irf_records = [
+                {
+                    "from_ticker": from_ticker,
+                    "to_ticker": to_ticker,
+                    "horizon": h,
+                    "irf_value": 0.0,
+                    "computed_at": now,
+                }
+                for h in range(1, IRF_HORIZON + 1)
+            ]
+            return ([], irf_records), None
 
         # --- influence_edges: one row per lag ---
         edge_records = []
