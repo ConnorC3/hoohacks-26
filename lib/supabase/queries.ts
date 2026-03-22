@@ -212,6 +212,58 @@ export async function getImpulseResponses(
   return result
 }
 
+// ---------------------------------------------------------------------------
+// Return statistics (used by risk analysis)
+// ---------------------------------------------------------------------------
+
+/**
+ * Fetch daily log returns for a set of tickers and compute per-ticker stats.
+ * Returns annualised std dev (daily stdDev × √252) and annualised mean.
+ */
+export async function getReturnStats(
+  tickers: string[]
+): Promise<Record<string, { stdDev: number; mean: number; count: number }>> {
+  if (tickers.length === 0) return {}
+
+  const rows: { ticker: string; log_return: number }[] = []
+  const pageSize = 1000
+  let offset = 0
+
+  while (true) {
+    const { data, error } = await supabase
+      .from("daily_returns")
+      .select("ticker, log_return")
+      .in("ticker", tickers)
+      .range(offset, offset + pageSize - 1)
+
+    if (error) throw error
+    if (!data.length) break
+    rows.push(...data)
+    if (data.length < pageSize) break
+    offset += pageSize
+  }
+
+  const grouped: Record<string, number[]> = {}
+  for (const row of rows) {
+    if (!grouped[row.ticker]) grouped[row.ticker] = []
+    grouped[row.ticker].push(row.log_return)
+  }
+
+  const result: Record<string, { stdDev: number; mean: number; count: number }> = {}
+  for (const [ticker, returns] of Object.entries(grouped)) {
+    const count = returns.length
+    const mean = returns.reduce((s, r) => s + r, 0) / count
+    const variance = returns.reduce((s, r) => s + (r - mean) ** 2, 0) / (count - 1)
+    result[ticker] = {
+      stdDev: Math.sqrt(variance) * Math.sqrt(252), // annualised
+      mean: mean * 252,                             // annualised
+      count,
+    }
+  }
+
+  return result
+}
+
 /**
  * Fetch all pre-computed IRF values TARGETING a given ticker (from any source).
  * Returns a map: from_ticker → irf_value[] (indexed by horizon 1..N)
