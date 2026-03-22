@@ -104,7 +104,11 @@ Return a JSON object with exactly three fields:
    - Explain what the risk IS and why it matters (what real-world event or market condition would trigger it)
    - Be written in plain English a non-expert investor can understand
    - NOT just repeat raw numbers — interpret what they mean for the investor
-4. Be realistic with your assessment — don't say "High risk" for a well-diversified portfolio with low volatility, and don't say "Low risk" for a concentrated portfolio with high volatility. Also, consider how much someone has invested in a stock. This can help determine if a risk is significant or not. For example, if a stock has high volatility but only makes up 1% of the portfolio, it might not be a major concern. Conversely, a stock that makes up 30% of the portfolio could be a big risk even if its volatility isn't the highest, because so much money is riding on it.
+4. Be realistic and calibrated with your assessment. This portfolio contains only domestic US equities — the absence of bonds, international stocks, or alternative assets is normal for a stock-only portfolio and should NOT itself be treated as a risk factor. Judge the portfolio on its own terms:
+   - "Low risk": well-diversified across 5+ sectors, no single stock over 20% of portfolio, weighted average annualised volatility under 25%
+   - "Medium risk": moderate concentration (1-2 sectors dominate, or one stock over 25%), or weighted volatility 25-35%
+   - "High risk": heavily concentrated (one stock over 40%, or 60%+ in one sector), or weighted volatility above 35%
+   A 100-stock portfolio spread across all S&P 500 sectors should almost never score "High". Weight positions matter — a volatile stock at 1% of the portfolio is a minor concern, not a major risk.
 
 Return only valid JSON, no markdown.`,
       config: {
