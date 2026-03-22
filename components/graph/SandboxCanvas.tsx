@@ -2,7 +2,7 @@
 
 import { useRef, useEffect, useState, useMemo } from "react"
 import CytoscapeComponent from "react-cytoscapejs"
-import type { Core, ElementDefinition, Stylesheet } from "cytoscape"
+import type { Core, ElementDefinition, StylesheetCSS as Stylesheet } from "cytoscape"
 import type { GraphEdge } from "@/lib/supabase/types"
 import { SECTOR_COLORS, DEFAULT_SECTOR_COLOR } from "./constants"
 
