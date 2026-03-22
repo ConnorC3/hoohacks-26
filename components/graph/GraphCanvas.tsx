@@ -113,7 +113,7 @@ export default function GraphCanvas({ nodes, edges, selectedTicker, onNodeClick 
     <CytoscapeComponent
       elements={elements}
       style={{ width: "100%", height: "100%" }}
-      stylesheet={STYLESHEET}
+      stylesheet={STYLESHEET as any}
       layout={LAYOUT}
       cy={(cy) => {
         cyRef.current = cy

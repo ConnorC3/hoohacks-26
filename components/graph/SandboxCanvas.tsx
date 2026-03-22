@@ -254,7 +254,7 @@ export default function SandboxCanvas({
       <CytoscapeComponent
         elements={elements}
         style={{ width: "100%", height: "100%" }}
-        stylesheet={stylesheet}
+        stylesheet={stylesheet as any}
         layout={{ name: "preset" }}
         cy={(cy) => {
           cyRef.current = cy
